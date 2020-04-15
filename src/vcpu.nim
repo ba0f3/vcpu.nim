@@ -55,7 +55,7 @@ template LOW(x: auto): BYTE = cast[ptr BYTE](x.unsafeAddr)[]
 
 macro dump(args: varargs[untyped]): untyped =
   result = nnkStmtList.newTree()
-  when not defined(release):
+  when defined(dump):
     result.add newCall("write", newIdentNode("stdout"), newStrLitNode("[VCPU] "))
     for n in args:
       result.add newCall("write", newIdentNode("stdout"), n)
