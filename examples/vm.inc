@@ -185,6 +185,20 @@ db 0x50, %1, %2
 db 0x51, %1, %2
 %endmacro
 
+%macro cmpb 2
+db 0x52, %1, %2
+%endmacro
+
+%macro cmpw 2
+db 0x53, %1
+dw %2
+%endmacro
+
+%macro cmpd 2
+db 0x54, %1
+dd %2
+%endmacro
+
 %macro inc 1
 db 0x60, %1
 %endmacro

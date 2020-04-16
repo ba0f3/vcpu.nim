@@ -16,3 +16,8 @@ Output:
 ```
 Hello World!
 ```
+
+### example.asm
+```shell
+nasm example.asm
+./runner --r0="pass pharse" example
