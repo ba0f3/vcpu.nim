@@ -1,7 +1,7 @@
 import streams, macros, strutils
 
 const
-  DATA_SIZE = 64
+  DATA_SIZE = 128
   STACK_SIZE = 64
 
 type
@@ -28,16 +28,17 @@ type
   OpCode* = enum
     NOP = 0x00,
     MOV, MOVMB, MOVMW, MOVB, MOVW, MOVBM, MOVWM,
-    MOVMRB, MOVMRW, MOVMD, MOVD, MOVDM, MOVMRD
-    JMP = 0x20
-    JZ, JNZ, JAE, JBE, JB, JA
-    ADVR, ADRR, ADRRL, SUBVR, SUBRR, SUBRRL
-    XOR, XORL
-    NOT, NOTL
-    ADVRD, SUBVRD
-    CMP = 0x50, CMPL
-    PUSH = 0x90, POP
-    PRNT = 0xb0, PRNTX, PRNTS
+    MOVMRB, MOVMRW, MOVMD, MOVD, MOVDM, MOVMRD,
+    MOVRMB, MOVRMW, MOVRMD, #MOVVMB, MOVVMW, MOVVMD,
+    JMP = 0x20, JZ, JNZ, JAE, JBE, JB, JA,
+    ADVR, ADRR, ADRRL, SUBVR, SUBRR, SUBRRL,
+    XOR, XORL,
+    NOT, NOTL,
+    ADVRD, SUBVRD,
+    CMP = 0x50, CMPL,
+    INC = 0x60, DEC, CALL, RET,
+    PUSH = 0x90, POP,
+    PRNT = 0xb0, PRNTX, PRNTS,
     HALT = 0xde
 
   BufferOverflowException* = object of OSError
@@ -132,6 +133,18 @@ proc jmp*(cpu: var VCPU, `addr`: DWORD): bool =
     cpu.regs.PC = `addr`
     result = true
 
+template push(cpu: var VCPU, value: DWORD) =
+  dec(cpu.regs.SP)
+  if cpu.regs.SP == 0xffffffff.DWORD:
+    error "stack overflow"
+  cpu.stack[cpu.regs.SP] = value
+
+proc pop(cpu: var VCPU): DWORD {.inline.} =
+  if cpu.stack[cpu.regs.SP] == STACK_SIZE:
+    echo "ERR: stack underflow"
+  result = cpu.stack[cpu.regs.SP]
+  inc(cpu.regs.SP)
+
 proc run*(cpu: var VCPU) =
   var
     op: OpCode
@@ -150,6 +163,7 @@ proc run*(cpu: var VCPU) =
       dump op
       break
     of MOV:
+      # move from register to register
       cpu.read(b0)
       cpu.read(b1)
       dump op, b0.Regs, b1.Regs
@@ -158,6 +172,7 @@ proc run*(cpu: var VCPU) =
       else:
         error "invalid register"
     of MOVMB:
+      # move and extend byte from memory to register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(w0)
@@ -166,6 +181,7 @@ proc run*(cpu: var VCPU) =
       cpu.read(w1, w0)
       cpu.regs.R[b0] = w1
     of MOVMW:
+      #  move and extend word from memory to register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(w0)
@@ -174,18 +190,21 @@ proc run*(cpu: var VCPU) =
       cpu.read(w1, w0)
       cpu.regs.R[b0] = w1
     of MOVB:
+      # move and extend byte to register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
       dump op, b0.Regs, b1
       cpu.regs.R[b0] = b1
     of MOVW:
+      # move and extend word to register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(w0)
       dump MOVW, b0.Regs, w0
       cpu.regs.R[b0] = w0
     of MOVBM:
+      #  move byte from register to memory location
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(w0)
@@ -194,6 +213,7 @@ proc run*(cpu: var VCPU) =
         exception
       cpu.write(cpu.regs.R[b0].BYTE, w0)
     of MOVWM:
+      # move word from register to memory location
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(w0)
@@ -201,6 +221,7 @@ proc run*(cpu: var VCPU) =
       if w0 >= cpu.codeLen: exception
       cpu.write(cpu.regs.R[b0], w0)
     of MOVMRB:
+      # move and extend byte from memory to register get addr from register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
@@ -210,6 +231,7 @@ proc run*(cpu: var VCPU) =
       cpu.read(b2, cpu.regs.R[b1])
       cpu.regs.R[b0] = b2
     of MOVMRW:
+      # move and extend word from memory to register get addr from register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
@@ -219,6 +241,7 @@ proc run*(cpu: var VCPU) =
       cpu.read(w0, cpu.regs.R[b1])
       cpu.regs.R[b0] = w0
     of MOVMD:
+      # move double word from memory to register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(d0)
@@ -226,13 +249,14 @@ proc run*(cpu: var VCPU) =
       if d0 >= cpu.codeLen: exception
       cpu.regs.R[b0] = d0
     of MOVD:
+      # move value to register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(d0)
       dump op, b0.Regs, d0
-      if w0 >= cpu.codeLen: exception
       cpu.regs.R[b0] = d0
     of MOVDM:
+      # move double word from register to memory location
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(w0)
@@ -240,6 +264,7 @@ proc run*(cpu: var VCPU) =
       if w0 >= cpu.codeLen: exception
       cpu.write(cpu.regs.R[b0], w0)
     of MOVMRD:
+      # move double word from memory to register get addr from register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
@@ -248,48 +273,92 @@ proc run*(cpu: var VCPU) =
       if cpu.regs.R[b1] >= cpu.codeLen: exception
       cpu.read(d0, cpu.regs.R[b1])
       cpu.regs.R[b0] = d0
+    of MOVRMB:
+      # move byte from register to memory, get addr from register
+      cpu.read(b0)
+      if b0 > 8: exception
+      cpu.read(b1)
+      if b1 > 8: exception
+      dump op, b0.Regs, b1.Regs, "; dst =", cpu.regs.R[b0], " v =", cpu.regs.R[b1]
+      if cpu.regs.R[b0] >= cpu.codeLen: exception
+      cpu.write(cpu.regs.R[b1].BYTE, cpu.regs.R[b0])
+    of MOVRMW:
+      # move word from register to memory, get addr from register
+      cpu.read(b0)
+      if b0 > 8: exception
+      cpu.read(b1)
+      if b1 > 8: exception
+      dump op, b0.Regs, b1.Regs
+      if cpu.regs.R[b0] >= cpu.codeLen: exception
+      cpu.write(cpu.regs.R[b1].WORD, cpu.regs.R[b0])
+    of MOVRMD:
+      # move double word from register to memory, get addr from register
+      cpu.read(b0)
+      if b0 > 8: exception
+      cpu.read(b1)
+      if b1 > 8: exception
+      dump op, b0.Regs, b1.Regs
+      if cpu.regs.R[b0] >= cpu.codeLen: exception
+      cpu.write(cpu.regs.R[b1], cpu.regs.R[b0])
+    #of MOVVMB:
+    #  # move byte from register to memory, get value from register
+    #  cpu.read(b0)
+    #  if b0 > 8: exception
+    #  cpu.read(b1)
+    #  if b1 > 8: exception
+    #  dump op, b0.Regs, b1.Regs
+    #  if cpu.regs.R[b0] >= cpu.codeLen: exception
+    #  cpu.write(cpu.regs.R[b1].BYTE, cpu.regs.R[b0])
     of JMP:
+      # unconditional jump
       cpu.read(w0)
       dump op, w0
       if w0 > cpu.codeLen: exception
       cpu.regs.PC = w0
     of JZ:
+      # jump if equal
       cpu.read(w0)
       dump op, w0
       if w0 > cpu.codeLen: exception
       if cpu.regs.ZF == 1:
         cpu.regs.PC = w0
     of JNZ:
+      # jump if not equal
       cpu.read(w0)
       dump op, w0
       if w0 > cpu.codeLen: exception
-      if cpu.regs.ZF == 1:
+      if cpu.regs.ZF == 0:
         cpu.regs.PC = w0
     of JAE:
+      # jump if above or equal
       cpu.read(w0)
       dump op, w0
       if w0 > cpu.codeLen: exception
       if cpu.regs.ZF == 1 or cpu.regs.CF == 0:
         cpu.regs.PC = w0
     of JBE:
+      # jump if below or equal
       cpu.read(w0)
       dump op, w0
       if w0 > cpu.codeLen: exception
       if cpu.regs.ZF == 1 or cpu.regs.CF == 1:
         cpu.regs.PC = w0
     of JB:
+      # jump if below
       cpu.read(w0)
       dump op, w0
       if w0 > cpu.codeLen: exception
       if cpu.regs.ZF == 0 and cpu.regs.CF == 1:
         cpu.regs.PC = w0
     of JA:
+      # jump if above
       cpu.read(w0)
       dump op, w0
       if w0 > cpu.codeLen: exception
       if cpu.regs.ZF == 0 and cpu.regs.CF == 0:
         cpu.regs.PC = w0
     of ADVR:
+      # Add word value to register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(w0)
@@ -299,6 +368,7 @@ proc run*(cpu: var VCPU) =
       cpu.regs.CF = if w1 < cpu.regs.R[b0]: 1 else: 0
       cpu.regs.R[b0] = w1
     of ADRR:
+      # Add two registers and save result in first
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
@@ -311,6 +381,7 @@ proc run*(cpu: var VCPU) =
       cpu.regs.ZF = if d1 == 0: 1 else: 0
       cpu.regs.CF = if d1 < d0: 1 else: 0
     of ADRRL:
+      # Add two registers (low byte) and save result in first
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
@@ -323,6 +394,7 @@ proc run*(cpu: var VCPU) =
       cpu.regs.ZF = if b1 == 0: 1 else: 0
       cpu.regs.CF = if b1 < b2: 1 else: 0
     of SUBVR:
+      # Substract word value from register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(w0)
@@ -332,6 +404,7 @@ proc run*(cpu: var VCPU) =
       cpu.regs.CF = if w1 > cpu.regs.R[b0]: 1 else: 0
       cpu.regs.R[b0] = w1
     of SUBRR:
+      # Substract two registers and save result in first
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
@@ -344,6 +417,7 @@ proc run*(cpu: var VCPU) =
       cpu.regs.ZF = if d1 == 0: 1 else: 0
       cpu.regs.CF = if d1 > d0: 1 else: 0
     of SUBRRL:
+      # Substract two registers (low byte) and save result in first
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
@@ -356,18 +430,20 @@ proc run*(cpu: var VCPU) =
       cpu.regs.ZF = if b1 == 0: 1 else: 0
       cpu.regs.CF = if d1 > b2: 1 else: 0
     of XOR:
+      # Xor two registers and save result in first
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
       if b1 > 8: exception
-      dump op, b0.Regs, b1.Regs
       d0 = cpu.regs.R[b0]
       d1 = cpu.regs.R[b1]
+      dump op, b0.Regs, b1.Regs, ";", d0, "^", d1, "=", d0 xor d1
       d0 = d0 xor d1
       cpu.regs.ZF = if d0 == 0: 1 else: 0
       cpu.regs.CF = 0
       cpu.regs.R[b0] = d0
     of XORL:
+      # Xor two registers (lower bytes) and save result in first
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
@@ -380,15 +456,18 @@ proc run*(cpu: var VCPU) =
       cpu.regs.CF = 0
       cpu.regs.R[b0] = b2
     of NOT:
+      # Bitwise not on value in a register and save result in this register
       cpu.read(b0)
       if b0 > 8: exception
       dump op, b0.Regs
       cpu.regs.R[b0] = not cpu.regs.R[b0]
     of NOTL:
+      # Bitwise not on value in a register (lower bytes) and save result in this register
       cpu.read(b0)
       if b0 > 8: exception
       #cast[ptr BYTE](addr cpu.regs.R[b0])[] = not cpu.regs.R[b0]
     of ADVRD:
+      # Add double word value to register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(d0)
@@ -398,6 +477,7 @@ proc run*(cpu: var VCPU) =
       cpu.regs.CF = if d1 < cpu.regs.R[b0]: 1 else: 0
       cpu.regs.R[b0] = d1
     of SUBVRD:
+      # Substract double word value from register
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(d0)
@@ -407,6 +487,7 @@ proc run*(cpu: var VCPU) =
       cpu.regs.CF = if d1 > cpu.regs.R[b0]: 1 else: 0
       cpu.regs.R[b0] = d1
     of CMP:
+      # compare two registers
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
@@ -417,6 +498,7 @@ proc run*(cpu: var VCPU) =
       cpu.regs.ZF = if d1 == d0: 1 else: 0
       cpu.regs.CF = if d1 > d0: 1 else: 0
     of CMPL:
+      # compare two registers (lower byte)
       cpu.read(b0)
       if b0 > 8: exception
       cpu.read(b1)
@@ -426,26 +508,39 @@ proc run*(cpu: var VCPU) =
       b1  = LOW(cpu.regs.R[b1])
       cpu.regs.ZF = if b0 == b0: 1 else: 0
       cpu.regs.CF = if b1 > b0: 1 else: 0
+    of INC:
+      cpu.read(b0)
+      dump op, b0.Regs
+      if b0 > 8: exception
+      inc(cpu.regs.R[b0])
+    of DEC:
+      cpu.read(b0)
+      dump op, b0.Regs
+      if b0 > 8: exception
+      dec(cpu.regs.R[b0])
+    of CALL:
+      cpu.read(w0)
+      dump op, w0
+      cpu.push(w0)
+    of RET:
+      dump op
+      cpu.regs.PC = cpu.pop()
     of PUSH:
       cpu.read(b0)
       if b0 > 8: exception
       dump op, b0.Regs
-      dec(cpu.regs.SP)
-      if cpu.regs.SP == 0xffffffff.DWORD:
-        error "stack overflow"
-      cpu.stack[cpu.regs.SP] = cpu.regs.R[b0]
+      cpu.push(cpu.regs.R[b0])
     of POP:
       cpu.read(b0)
       dump op, b0.Regs
       if b0 > 8: exception
       if cpu.stack[cpu.regs.SP] == STACK_SIZE:
         error "stack underflow"
-      cpu.regs.R[b0] = cpu.stack[cpu.regs.SP]
-      inc(cpu.regs.SP)
+      cpu.regs.R[b0] = cpu.pop()
     of PRNT:
       dump op
       if cpu.regs.SP == STACK_SIZE: exception
-      echo cpu.code[cpu.stack[cpu.regs.SP]]
+      echo cpu.code[cpu.stack[cpu.regs.SP]].char
       inc(cpu.regs.SP)
     of PRNTX:
       dump op

@@ -78,6 +78,18 @@ db 0x0c, %1, %2
 db 0x0d, %1, %2
 %endmacro
 
+%macro movrmb 2
+db 0x0e, %1, %2
+%endmacro
+
+%macro movrmw 2
+db 0x0f, %1, %2
+%endmacro
+
+%macro movrmd 2
+db 0x10, %1, %2
+%endmacro
+
 %macro jmp 1
 db 0x20
 dw %1
@@ -114,54 +126,54 @@ dw %1
 %endmacro
 
 %macro advr 2
-db 0x30, %1
+db 0x27, %1
 dw %2
 %endmacro
 
 %macro adrr 2
-db 0x31, %1, %2
+db 0x28, %1, %2
 %endmacro
 
 %macro adrrl 2
-db 0x32, %1, %2
+db 0x29, %1, %2
 %endmacro
 
 %macro subvr 2
-db 0x33, %1
+db 0x2a, %1
 dw %2
 %endmacro
 
 %macro subrr 2
-db 0x34, %1, %2
+db 0x2b, %1, %2
 %endmacro
 
 %macro subrrl 2
-db 0x35, %1, %2
+db 0x2c, %1, %2
 %endmacro
 
 %macro xor 2
-db 0x36, %1, %2
+db 0x2d, %1, %2
 %endmacro
 
 %macro xorl 2
-db 0x37, %1, %2
+db 0x2e, %1, %2
 %endmacro
 
 %macro not 1
-db 0x38, %1
+db 0x2f, %1
 %endmacro
 
 %macro notb 1
-db 0x39, %1
+db 0x30, %1
 %endmacro
 
 %macro advrd 2
-db 0x3a, %1
+db 0x31, %1
 dd %2
 %endmacro
 
 %macro subvrd 2
-db 0x3a, %1
+db 0x32, %1
 dd %2
 %endmacro
 
@@ -171,6 +183,23 @@ db 0x50, %1, %2
 
 %macro cmpl 2
 db 0x51, %1, %2
+%endmacro
+
+%macro inc 1
+db 0x60, %1
+%endmacro
+
+%macro dec 1
+db 0x61, %1
+%endmacro
+
+%macro call 1
+db 0x62
+dw %1
+%endmacro
+
+%macro ret 0
+db 0x63
 %endmacro
 
 %macro push 1
