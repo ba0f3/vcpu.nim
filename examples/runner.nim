@@ -4,9 +4,9 @@ proc parseInput(cpu: VCPU, input: string): DWORD =
   if input.len == 0:
     return 0.DWORD
   var value: int
-  if parseHex(input, value) != 0:
+  if parseInt(input, value) != 0:
     return value.DWORD
-  elif parseInt(input, value) != 0:
+  elif parseHex(input, value) != 0:
     return value.DWORD
   else:
     return cpu.addInput(input)
@@ -29,6 +29,7 @@ proc fun(paths: seq[string], r0="", r1="", r2="", r3="", r4="", r5="", r6="", r7
 
 
     cpu.run()
+    echo cpu.regs
   result = 0
 
 import cligen; dispatch(fun)

@@ -1,10 +1,8 @@
 %include "vm.inc"
-ma
-in:
-  movd r0, input
-  movd r1, key
-  jmp loop
 
+main:
+  push r0
+  push r1
 loop:
   movmrb r4, r0
   movmrb r3, r1
@@ -20,19 +18,12 @@ loop:
   jz reset_key
   jmp loop
 
-end:
-  movd r0, input
-  push r0
-  prnts
-  halt
-
 reset_key:
-  movd r1, key
+  pop r1
+  push r1
   jmp loop
 
-key:
-  db "s3cret", 0x00
-input:
-  db 0x1b, 0x56, 0x0f, 0x1e, 0x0a, 0x54, 0x04, 0x5c, 0x11, 0x1e, 0x01, 0x00
-
-
+end:
+  ;pop r1
+  ;prntx
+  halt
