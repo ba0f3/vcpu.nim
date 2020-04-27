@@ -9,14 +9,32 @@
 %define r5 5
 %define r6 6
 %define r7 7
+%define pc 8
+%define sp 9
+%define bp 10
+
 
 %macro nop 0
 db 0x00
 %endmacro
 
 %macro halt 0
-db 0xde
+db 0xd0
 %endmacro
+
+%macro call 1
+db 0xd1
+dw %1
+%endmacro
+
+%macro ret 0
+db 0xd2
+%endmacro
+
+%macro dump 0
+db 0xd3
+%endmacro
+
 
 %macro mov 2
 db 0x01, %1, %2
@@ -92,6 +110,16 @@ db 0x10, %1, %2
 
 %macro jmp 1
 db 0x20
+dw %1
+%endmacro
+
+%macro je 1
+db 0x21
+dw %1
+%endmacro
+
+%macro jne 1
+db 0x22
 dw %1
 %endmacro
 
@@ -207,13 +235,16 @@ db 0x60, %1
 db 0x61, %1
 %endmacro
 
-%macro call 1
-db 0x62
-dw %1
+%macro shl 2
+db 0x62, %1, %2
 %endmacro
 
-%macro ret 0
-db 0x63
+%macro shr 2
+db 0x63, %1, %2
+%endmacro
+
+%macro mod 2
+db 0x64, %1, %2
 %endmacro
 
 %macro push 1
@@ -222,6 +253,11 @@ db 0x90, %1
 
 %macro pop 1
 db 0x91, %1
+%endmacro
+
+%macro pushimm 1
+db 0x92
+dd %1
 %endmacro
 
 %macro prnt 0

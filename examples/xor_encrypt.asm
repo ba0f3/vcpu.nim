@@ -24,6 +24,6 @@ reset_key:
   jmp loop
 
 end:
-  ;pop r1
-  ;prntx
+  pop r1
+  prntx
   halt
