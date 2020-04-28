@@ -1,16 +1,15 @@
 import streams, macros, strutils, locks
 
+import private/[common, helpers]
+export common
+
 const
   VCPU_DATA_SIZE {.intdefine.} = 1024
   VCPU_STACK_SIZE {.intdefine.} = 32
 
 type
-  BYTE* = uint8
-  WORD* = uint16
-  DWORD* = uint32
-
   REGISTERS = object
-    R: array[8, DWORD]
+    R: array[6, DWORD]
     ZF {.bitsize:1.}: uint8
     CF {.bitsize:1.}: uint8
     PC, SP, BP: DWORD
@@ -22,39 +21,16 @@ type
     regs: REGISTERS
     lock: Lock
 
-  Regs* {.size: 1.} = enum
-    R0, R1, R2, R3, R4, R5, R6, R7
-    PC, SP, BP
-
-
-  OpCode* = enum
-    NOP = 0x00,
-    MOV, MOVMB, MOVMW, MOVB, MOVW, MOVBM, MOVWM,
-    MOVMRB, MOVMRW, MOVMD, MOVD, MOVDM, MOVMRD,
-    MOVRMB, MOVRMW, MOVRMD,
-    JMP = 0x20, JZ, JNZ, JAE, JBE, JB, JA,
-    ADVR, ADRR, ADRRL, SUBVR, SUBRR, SUBRRL,
-    XOR, XORL,
-    NOT, NOTL,
-    ADVRD, SUBVRD,
-    CMP = 0x50, CMPL, CMPB, CMPW, CMPD,
-    INC = 0x60, DEC, SHL, SHR, MOD
-    PUSH = 0x90, POP, PUSHIMM
-    PRNT = 0xb0, PRNTX, PRNTS,
-    HALT = 0xd0, CALL, RET, DUMP
-
   BufferOverflowException* = object of OSError
   StackOverflowException* = object of OSError
   StackUnderflowException* = object of OSError
-
-converter opcode2byte*(o: OpCode): BYTE = o.BYTE
-converter regs2byte*(o: Regs): BYTE = o.BYTE
 
 proc err(t: typedesc, msg: string) {.inline.} = raise newException(t, msg)
 
 template invalid() = err(IOError, "invalid register")
 template bof() = err(BufferOverflowException, "buffer overflow")
-template LOW(x: auto): BYTE = cast[ptr BYTE](x.unsafeAddr)[]
+
+proc `[]`(R: ptr array[6, DWORD], idx: BYTE): DWORD = R[idx mod 6]
 #template R(idx: int): DWORD = cpu.regs.R[idx]
 
 macro debug(args: varargs[untyped]): untyped =
@@ -68,7 +44,6 @@ macro debug(args: varargs[untyped]): untyped =
       result.add newCall("write", newIdentNode("stdout"), newLit(" "))
     result.add newCall("writeLine", newIdentNode("stdout"), newLit(""))
     result.add newCall("flushFile", newIdentNode("stdout"))
-
 
 macro trace(args: varargs[untyped]): untyped =
   result = newStmtList()
@@ -104,9 +79,9 @@ proc write*[T](cpu: VCPU, input: T, pos: WORD|DWORD) =
   if tmpLen > cpu.codeLen.int:
     cpu.codeLen = tmpLen.DWORD
 
-proc setReg*(cpu: VCPU, reg: Regs, value: DWORD) {.inline.} = cpu.regs.R[reg.ord] = value
-proc setReg*(cpu: VCPU, r1: Regs, r2: Regs) {.inline.} = cpu.regs.R[r1.ord] = cpu.regs.R[r2.ord]
-proc getReg*(cpu: VCPU, reg: Regs): DWORD {.inline.} = cpu.regs.R[reg.ord]
+proc setReg*(cpu: VCPU, reg: Regs, value: DWORD) {.inline.} = cpu.regs.R[reg.ord mod 6] = value
+proc setReg*(cpu: VCPU, r1: Regs, r2: Regs) {.inline.} = cpu.regs.R[r1.ord mod 6] = cpu.regs.R[r2.ord mod 6]
+proc getReg*(cpu: VCPU, reg: Regs): DWORD {.inline.} = cpu.regs.R[reg.ord mod 6]
 
 proc getZF*(cpu: VCPU): uint8 {.inline.} = cpu.regs.ZF
 proc getCF*(cpu: VCPU): uint8 {.inline.} = cpu.regs.CF
@@ -180,21 +155,20 @@ proc dump*(cpu: VCPU): DWORD =
 
 proc run*(cpu: VCPU): DWORD =
   var
+    ins: Instruction
     op: OpCode
     b0, b1, b2: BYTE
     w0, w1: WORD
     d0, d1: DWORD
     R = addr cpu.regs.R
-
   cpu.lock.acquire()
-
   while true:
     if cpu.regs.PC >= cpu.codeLen: bof
-    cpu.read(op)
+    cpu.read(ins)
+    op = ins.op
     case op
     of NOP:
       trace op
-      discard
     of DUMP:
       when not defined(release):
         echo "[VCPU] ", cpu.regs
@@ -210,141 +184,17 @@ proc run*(cpu: VCPU): DWORD =
       cpu.regs.PC = cpu.pop()
       trace op, "; PC =", cpu.regs.PC
     of MOV:
-      # move from register to register
-      cpu.read(b0)
-      cpu.read(b1)
-      trace op, b0.Regs, b1.Regs
-      if b0 >= Regs.high or b1 >= Regs.high: invalid
-      R[b0] = R[b1]
-    of MOVMB:
-      # move and extend byte from memory to register
       cpu.read(b0)
       if b0 >= Regs.high: invalid
-      cpu.read(w0)
-      if w0 >= cpu.codeLen: bof
-      trace op, b0.Regs, w0
-      cpu.read(w1, w0)
-      R[b0] = w1
-    of MOVMW:
-      #  move and extend word from memory to register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(w0)
-      if w0 >= cpu.codeLen: bof
-      trace op, b0.Regs, w0
-      cpu.read(w1, w0)
-      R[b0] = w1
-    of MOVB:
-      # move and extend byte to register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      trace op, b0.Regs, b1
-      R[b0] = b1
-    of MOVW:
-      # move and extend word to register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(w0)
-      trace MOVW, b0.Regs, w0
-      R[b0] = w0
-    of MOVBM:
-      #  move byte from register to memory location
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(w0)
-      trace op, b0.Regs, w0
-      if w0 >= cpu.codeLen: bof
-      cpu.write(R[b0].BYTE, w0)
-    of MOVWM:
-      # move word from register to memory location
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(w0)
-      trace op, b0.Regs, w0
-      if w0 >= cpu.codeLen: bof
-      cpu.write(R[b0], w0)
-    of MOVMRB:
-      # move and extend byte from memory to register get addr from register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      d0 = R[b1]
-      trace op, b0.Regs, b1.Regs, "; R[b1] =", d0
-      if d0 >= cpu.codeLen: bof
-      cpu.read(b2, d0)
-      R[b0] = b2
-    of MOVMRW:
-      # move and extend word from memory to register get addr from register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      trace op, b0.Regs, b1.Regs
-      if b1 >= Regs.high: invalid
-      if R[b1] >= cpu.codeLen: bof
-      cpu.read(w0, R[b1])
-      R[b0] = w0
-    of MOVMD:
-      # move double word from memory to register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(d0)
-      trace op, b0.Regs, d0
-      if d0 >= cpu.codeLen: bof
-      R[b0] = d0
-    of MOVD:
-      # move value to register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(d0)
-      trace op, b0.Regs, d0
-      R[b0] = d0
-    of MOVDM:
-      # move double word from register to memory location
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(w0)
-      trace op, b0.Regs, w0
-      if w0 >= cpu.codeLen: bof
-      cpu.write(R[b0], w0)
-    of MOVMRD:
-      # move double word from memory to register get addr from register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      if R[b1] >= cpu.codeLen: bof
-      cpu.read(d0, R[b1])
-      R[b0] = d0
-    of MOVRMB:
-      # move byte from register to memory, get addr from register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs, "; dst =", R[b0], " v =", R[b1]
-      if R[b0] >= cpu.codeLen: bof
-      cpu.write(R[b1].BYTE, R[b0])
-    of MOVRMW:
-      # move word from register to memory, get addr from register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      if R[b0] >= cpu.codeLen: bof
-      cpu.write(R[b1].WORD, R[b0])
-    of MOVRMD:
-      # move double word from register to memory, get addr from register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      if R[b0] >= cpu.codeLen: bof
-      cpu.write(R[b1], R[b0])
+      if ins.im:
+        cpu.read(d0)
+        trace op, b0.Regs, d0
+        R[b0] = d0
+      else:
+        cpu.read(b1)
+        if b1 >= Regs.high: invalid
+        trace op, b0.Regs, b1.Regs
+        R[b0] = R[b1]
     of JMP:
       # unconditional jump
       cpu.read(w0)
@@ -365,212 +215,71 @@ proc run*(cpu: VCPU): DWORD =
       if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0:
         cpu.regs.PC = w0
-    of JAE:
-      # jump if above or equal
+    of JGE:
+      # jump if greater or equal
       cpu.read(w0)
       trace op, w0
       if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 1 or cpu.regs.CF == 0:
         cpu.regs.PC = w0
-    of JBE:
-      # jump if below or equal
+    of JLE:
+      # jump if less than or equal
       cpu.read(w0)
       trace op, w0
       if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 1 or cpu.regs.CF == 1:
         cpu.regs.PC = w0
-    of JB:
-      # jump if below
+    of JL:
+      # jump if less than
       cpu.read(w0)
       trace op, w0
       if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0 and cpu.regs.CF == 1:
         cpu.regs.PC = w0
-    of JA:
-      # jump if above
+    of JG:
+      # jump if greater
       cpu.read(w0)
       trace op, w0
       if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0 and cpu.regs.CF == 0:
         cpu.regs.PC = w0
-    of ADVR:
-      # Add word value to register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(w0)
-      trace op, b0.Regs, w0
-      w1 = R[b0].WORD + w0
-      cpu.regs.ZF = if w1 == 0: 1 else: 0
-      cpu.regs.CF = if w1 < R[b0]: 1 else: 0
-      R[b0] = w1
-    of ADRR:
-      # Add two registers and save result in first
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      d0 = R[b0]
-      d1 = R[b1]
-      d1 += d0
-      R[b0] = d1
-      cpu.regs.ZF = if d1 == 0: 1 else: 0
-      cpu.regs.CF = if d1 < d0: 1 else: 0
-    of ADRRL:
-      # Add two registers (low byte) and save result in first
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      b2 = R[b0].BYTE
-      b1 = R[b1].BYTE
-      b1 = b1 + b2
-      R[b0] = b1
-      cpu.regs.ZF = if b1 == 0: 1 else: 0
-      cpu.regs.CF = if b1 < b2: 1 else: 0
-    of SUBVR:
-      # Substract word value from register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(w0)
-      trace op, b0.Regs, w0
-      w1 = R[b0].WORD - w0
-      cpu.regs.ZF = if w1 == 0: 1 else: 0
-      cpu.regs.CF = if w1 > R[b0]: 1 else: 0
-      R[b0] = w1
-    of SUBRR:
-      # Substract two registers and save result in first
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      d0 = R[b0]
-      d1 = R[b1]
-      d1 -= d0
-      R[b0] = d1
-      cpu.regs.ZF = if d1 == 0: 1 else: 0
-      cpu.regs.CF = if d1 > d0: 1 else: 0
-    of SUBRRL:
-      # Substract two registers (low byte) and save result in first
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      b2 = R[b0].BYTE
-      b1 = R[b1].BYTE
-      b1 = b1 - b2
-      R[b0] = b1
-      cpu.regs.ZF = if b1 == 0: 1 else: 0
-      cpu.regs.CF = if d1 > b2: 1 else: 0
     of XOR:
-      # Xor two registers and save result in first
       cpu.read(b0)
       if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
+      if ins.im:
+        cpu.read(d1)
+        trace op, b0.Regs, d1
+      else:
+        cpu.read(b1)
+        if b1 >= Regs.high: invalid
+        trace op, b0.Regs, b1.Regs
+        d1 = R[b1]
       d0 = R[b0]
-      d1 = R[b1]
-      trace op, b0.Regs, b1.Regs, ";", d0, "^", d1, "=", d0 xor d1
       d0 = d0 xor d1
       cpu.regs.ZF = if d0 == 0: 1 else: 0
       cpu.regs.CF = 0
       R[b0] = d0
-    of XORL:
-      # Xor two registers (lower bytes) and save result in first
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      b2 = R[b0].BYTE
-      b1 = R[b1].BYTE
-      b2 = b2 xor b1
-      cpu.regs.ZF = if b2 == 0: 1 else: 0
-      cpu.regs.CF = 0
-      R[b0] = b2
     of NOT:
       # Bitwise not on value in a register and save result in this register
       cpu.read(b0)
       if b0 >= Regs.high: invalid
       trace op, b0.Regs
       R[b0] = not R[b0]
-    of NOTL:
-      # Bitwise not on value in a register (lower bytes) and save result in this register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      #cast[ptr BYTE](addr R[b0])[] = not R[b0]
-    of ADVRD:
-      # Add double word value to register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(d0)
-      trace op, b0.Regs, d0
-      d1 = R[b0] + d0
-      cpu.regs.ZF = if d1 == 0: 1 else: 0
-      cpu.regs.CF = if d1 < R[b0]: 1 else: 0
-      R[b0] = d1
-    of SUBVRD:
-      # Substract double word value from register
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(d0)
-      trace op, b0.Regs, d0
-      d1 = R[b0] - d0
-      cpu.regs.ZF = if d1 == 0: 1 else: 0
-      cpu.regs.CF = if d1 > R[b0]: 1 else: 0
-      R[b0] = d1
     of CMP:
       # compare two registers
       cpu.read(b0)
       if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      d0 = R[b0]
-      d1 = R[b1]
-      cpu.regs.ZF = if d1 == d0: 1 else: 0
-      cpu.regs.CF = if d1 > d0: 1 else: 0
-    of CMPB:
-      # compare lower byte in register with value
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      trace op, b0.Regs, b1
-      b0 = R[b0].BYTE
-      cpu.regs.ZF = if b1 == b0: 1 else: 0
-      cpu.regs.CF = if b1 > b0: 1 else: 0
-    of CMPW:
-      # compare lower word in register with value
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(w1)
-      trace op, b0.Regs, w1
-      w0 = R[b0].WORD
-      cpu.regs.ZF = if w1 == w0: 1 else: 0
-      cpu.regs.CF = if w1 > w0: 1 else: 0
-    of CMPD:
-      # compare double word in register with value
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(d1)
-      trace op, b0.Regs, d1
+      if ins.im:
+        cpu.read(d1)
+        trace op, b0.Regs, d1
+      else:
+        cpu.read(b1)
+        if b1 >= Regs.high: invalid
+        trace op, b0.Regs, b1.Regs
+        d1 = R[b1]
       d0 = R[b0]
       cpu.regs.ZF = if d1 == d0: 1 else: 0
       cpu.regs.CF = if d1 > d0: 1 else: 0
-    of CMPL:
-      # compare two registers (lower byte)
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b1 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      b0  = LOW(R[b0])
-      b1  = LOW(R[b1])
-      cpu.regs.ZF = if b0 == b0: 1 else: 0
-      cpu.regs.CF = if b1 > b0: 1 else: 0
     of INC:
       cpu.read(b0)
       trace op, b0.Regs
@@ -584,38 +293,54 @@ proc run*(cpu: VCPU): DWORD =
     of SHL:
       cpu.read(b0)
       if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b0 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      R[b0] = R[b0] shl R[b1]
+      if ins.im:
+        cpu.read(b2)
+        trace op, b0.Regs, b2
+      else:
+        cpu.read(b1)
+        if b1 >= Regs.high: invalid
+        trace op, b0.Regs, b1.Regs
+        b2 = R[b1].BYTE
+      R[b0] = R[b0] shl b2
     of SHR:
       cpu.read(b0)
       if b0 >= Regs.high: invalid
-      cpu.read(b1)
-      if b0 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      R[b0] = R[b0] shr R[b1]
+      if ins.im:
+        cpu.read(b2)
+        trace op, b0.Regs, b2
+      else:
+        cpu.read(b1)
+        if b1 >= Regs.high: invalid
+        b2 = R[b1].BYTE
+        trace op, b0.Regs, b1.Regs
+      R[b0] = R[b0] shr b2
     of MOD:
       cpu.read(b0)
       if b0 >= Regs.high: invalid
       cpu.read(b1)
-      if b0 >= Regs.high: invalid
-      trace op, b0.Regs, b1.Regs
-      R[b0] = R[b0] mod R[b1]
+      if ins.im:
+        cpu.read(d0)
+        trace op, b0.Regs, d0
+      else:
+        if b1 >= Regs.high: invalid
+        trace op, b0.Regs, b1.Regs
+        d0 = R[b1]
+      R[b0] = R[b0] mod d0
     of PUSH:
-      cpu.read(b0)
-      if b0 >= Regs.high: invalid
-      trace op, b0.Regs
-      cpu.push(R[b0])
+      if ins.im:
+        cpu.read(d0)
+        trace op, d0
+      else:
+        cpu.read(b0)
+        if b0 >= Regs.high: invalid
+        trace op, b0.Regs
+        d0 = R[b0]
+      cpu.push(d0)
     of POP:
       cpu.read(b0)
       trace op, b0.Regs
       if b0 >= Regs.high: invalid
       R[b0] = cpu.pop()
-    of PUSHIMM:
-      cpu.read(d0)
-      trace op, d0
-      cpu.push(d0)
     of PRNT:
       trace op
       let idx = cpu.pop()
@@ -628,6 +353,8 @@ proc run*(cpu: VCPU): DWORD =
       trace op
       let idx = cpu.pop()
       echo cast[cstring](addr cpu.code[idx])
+    else:
+      discard
   result = R[0]
   cpu.lock.release()
 
