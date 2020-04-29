@@ -165,6 +165,7 @@ proc run*(cpu: VCPU): DWORD =
   while true:
     if cpu.regs.PC >= cpu.codeLen: bof
     cpu.read(ins)
+    #echo ins
     op = ins.op
     case op
     of NOP:
@@ -189,12 +190,12 @@ proc run*(cpu: VCPU): DWORD =
       if ins.im:
         cpu.read(d0)
         trace op, b0.Regs, d0
-        R[b0] = d0
+        R[r(b0)[0]] = d0
       else:
         cpu.read(b1)
         if b1 >= Regs.high: invalid
         trace op, b0.Regs, b1.Regs
-        R[b0] = R[b1]
+        R[r(b0)[0]] = R[r(b1)[0]]
     of JMP:
       # unconditional jump
       cpu.read(w0)
@@ -334,7 +335,7 @@ proc run*(cpu: VCPU): DWORD =
         cpu.read(b0)
         if b0 >= Regs.high: invalid
         trace op, b0.Regs
-        d0 = R[b0]
+        d0 = R[r(b0)[0]]
       cpu.push(d0)
     of POP:
       cpu.read(b0)

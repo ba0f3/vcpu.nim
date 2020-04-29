@@ -1,4 +1,5 @@
-import vcpu, parseutils
+import vcpu, parseutils, strutils
+import ../src/private/[assembler, helpers]
 
 proc parseInput(cpu: VCPU, input: string): DWORD =
   if input.len == 0:
@@ -15,7 +16,9 @@ proc fun(paths: seq[string], r0="", r1="", r2="", r3="", r4="", r5="", r6="", r7
   let cpu = newVCPU()
   for path in paths:
     cpu.reset()
-    let data = readFile(path)
+    var a = newAssembler()
+    let data = a.compileString(readFile(path))
+    hexdump(data.cstring, data.len)
     if not cpu.loadCode(data.cstring, data.len):
       return 1
     cpu.setReg(R0, cpu.parseInput(r0))

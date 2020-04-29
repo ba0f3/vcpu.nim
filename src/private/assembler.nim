@@ -1,5 +1,7 @@
 import strutils, pegs, tables, streams, parseUtils
-import common
+import common, helpers
+
+# TODO: detect arg size by reg name, pointer address
 
 let
   grammar = peg"""
@@ -7,47 +9,51 @@ let
   label <- \ident ':'
   code  <- ins (\n / \s+ arg (',' arg )* )?
   ins   <- \a+
-  arg   <- ' '* (reg / num / name / '"' str '"') ' '*
+  arg   <- ' '* (reg / imm / name / '"' str '"') ' '*
   reg   <- ('r' [0-7a-h]) / [a-d][hl]
   name  <- \ident
   str   <- ("\\" . / [^"])*
-  num   <- '0x' [0-9a-f]+ / [0-9a-f]+ 'h' / \d+
-  #num   <- \d+
+  imm   <- '0x' [0-9a-f]+ / [0-9a-f]+ 'h' / \d+
   ig    <- (\s / ';' @ \n)*
 """
 
 type
   Assembler = ref object of RootObj
-    labels: Table[string, int]
     code: StringStream
+    labels: Table[string, int]
+    placeHolders: Table[string, seq[int]]
+    tokens: seq[Token]
+    pos: int
 
   TokenKind = enum
     LABEL
-    INSTRUCTION
-    REGISTER
+    INS
+    REG
     NAME
-    NUMBER
-    STRING
+    IMM
+    STR
 
   Token = object of RootObj
     case kind: TokenKind:
     of LABEL:
-      label: string
-    of INSTRUCTION:
-      ins: OpCode
-    of REGISTER:
-      reg: Regs
+      l: string
+    of INS:
+      o: OpCode
+    of REG:
+      r: Regs
     of NAME:
-      name: string
-    of NUMBER:
-      num: int
-    of STRING:
-      str: string
+      n: string
+    of IMM:
+      i: int
+    of STR:
+      s: string
 
-proc newAssembler(): Assembler =
+proc newAssembler*(): Assembler =
   result = new(Assembler)
-  result.labels = initTable[string, int]()
   result.code = newStringStream()
+  result.labels = initTable[string, int]()
+  result.placeHolders = initTable[string, seq[int]]()
+
 
 proc lookupIns(ins: string): OpCode =
   var ins = ins.toUpperAscii()
@@ -64,6 +70,13 @@ proc isReg(s: string, r: var Regs): bool =
       result = true
       break
 
+proc labelToken(val: string): Token {.inline.} = Token(kind: LABEL, l: val)
+proc insToken(val: OpCode): Token {.inline.} = Token(kind: INS, o: val)
+proc regToken(val: Regs): Token {.inline.} = Token(kind: REG, r: val)
+proc nameToken(val: string): Token {.inline.} = Token(kind: NAME, n: val)
+proc immToken(val: int): Token {.inline.} = Token(kind: IMM, i: val)
+proc strToken(val: string): Token {.inline.} = Token(kind: STR, s: val)
+
 proc tokenizer(s: string): seq[Token] =
   var tokens: seq[Token]
   let parseArithExpr = grammar.eventParser:
@@ -74,110 +87,141 @@ proc tokenizer(s: string): seq[Token] =
           #echo p.nt.name, " => ", matchStr
           case p.nt.name
           of "label":
-            tokens.add(Token(kind: LABEL, label: matchStr[0..^2]))
+            tokens.add(labelToken(matchStr[0..^2]))
           of "ins":
             var ins = lookupIns(matchStr)
-            tokens.add(Token(kind: INSTRUCTION, ins: ins))
+            tokens.add(insToken(ins))
           of "reg":
             var reg: Regs
             if isReg(matchStr, reg):
-              tokens.add(Token(kind: REGISTER, reg: reg))
+              tokens.add(regToken(reg))
             else:
               raise newException(ValueError, "invalid register")
-
           of "name":
-            tokens.add(Token(kind: NAME, name: matchStr))
+            tokens.add(nameToken(matchStr))
           of "str":
-            tokens.add(Token(kind: STRING, str: matchStr))
-          of "num":
+            tokens.add(strToken(matchStr))
+          of "imm":
             var num: int
             discard parseHex(matchStr, num)
-            tokens.add(Token(kind: NUMBER, num: num))
+            tokens.add(immToken(num))
 
   discard parseArithExpr(s)
   result = tokens
 
-proc compileFile(a: Assembler, path: string) =
+proc writeArg(a: Assembler, t: Token) =
+  case t.kind:
+  of REG:
+    a.code.write(t.r)
+  of IMM:
+    a.code.write(t.i.DWORD)
+  of NAME:
+    if not a.placeHolders.hasKey(t.n):
+      a.placeHolders[t.n] = @[a.code.getPosition()]
+    else:
+      a.placeHolders[t.n].add(a.code.getPosition())
+    a.code.write(0.DWORD)
+  else:
+    echo t.kind, " not supported yet"
+
+proc parseData(a: Assembler, op: OpCode) =
   var
-    op: string
-    r1, r2: Token
-    a1, a2: string
-    d1, d2: DWORD
-    tokens = tokenizer(readFile(path))
-  for i in 0..<tokens.len:
-    var token = tokens[i]
+    size = LOBYTE(OpOptions[op]).int8
+    next  = a.tokens[a.pos + 1]
+
+  while next.kind in [IMM, STR]:
+    if next.kind == STR:
+      a.code.write(next.s)
+      if next.s.len mod size > 0:
+        let pad = size - (next.s.len mod size)
+        a.code.write('\0'.repeat(pad))
+    elif next.kind == IMM:
+      a.code.writeData(next.i.unsafeAddr, size)
+    inc(a.pos)
+    if a.pos + 1 >= a.tokens.len:
+      break
+    next  = a.tokens[a.pos + 1]
+
+proc parseIns(a: Assembler, op: OpCode) =
+  let
+    options = OpOptions[op]
+    nargs = HIBYTE(options).int8
+    kind = LOBYTE(options).int8
+
+  if a.tokens.len < a.pos + nargs:
+    raise newException(ValueError, "not enough token")
+
+  var
+    ins = Instruction(op: op)
+    a1, a2: Token
+  if nargs == 0:
+    a.code.write(ins)
+  elif nargs == 1:
+    a1 = a.tokens[a.pos + 1]
+    if kind == 2  and a1.kind != REG:
+      ins.im = true
+    #echo op, " ", ins
+    a.code.write(ins)
+    a.writeArg(a1)
+  else:
+    assert kind != 0
+    a1 = a.tokens[a.pos + 1]
+    a2 = a.tokens[a.pos + 2]
+    if kind == 2 and a2.kind != REG:
+      ins.im = true
+    a.code.write(ins)
+    a.writeArg(a1)
+    a.writeArg(a2)
+  inc(a.pos, nargs)
+
+proc compileString*(a: Assembler, input: string): TaintedString =
+  a.tokens = tokenizer(input)
+
+  while a.pos < a.tokens.len:
+    var token = a.tokens[a.pos]
+    assert token.kind in [LABEL, INS]
     case token.kind
     of LABEL:
-      a.labels[token.label] = a.code.getPosition()
-    of INSTRUCTION:
-      var ins: Instruction
-      ins.op = token.ins
-      case ins.op:
-      of MOV:
-        r1 = tokens[i+1]
-        r2 = tokens[i+2]
-        case r2.kind
-        of NUMBER:
-          ins.im = true
-          a.code.write(ins)
-          a.code.write(r1.reg)
-          a.code.write(r2.num.DWORD)
-        of REGISTER:
-          a.code.write(ins)
-          a.code.write(r1.reg)
-          a.code.write(r2.reg)
-        else:
-          discard
+      a.labels[token.l] = a.code.getPosition()
+      inc(a.pos)
+    of INS:
+      if token.o in [DB, DW, DD]:
+        a.parseData(token.o)
       else:
-        discard
+        a.parseIns(token.o)
+      inc(a.pos)
     else:
-      discard
+      raise newException(ValueError, "it should never go here")
 
-#[
-proc compileFile(a: Assembler, path: string) =
-  var
-    op: string
-    r1, r2: Regs
-    a1, a2: string
-    d1, d2: DWORD
-  for line in path.lines:
-    if line =~ grammar:
-      echo matches
-      op = matches[0]
-      a1 = matches[1]
-      a2 = matches[2]
-      if a1 == ":":
-        a.labels[op] = a.code.getPosition()
-      elif op == "db":
-        echo "db"
-      else:
-        var ins: Instruction
-        ins.op = lookupIns(op)
-        case ins.op
-        of MOV:
-          if not isReg(matches[1], r1):
-            echo "first arg for MOV must be an register"
-          if isReg(matches[2], r2):
-            a.code.write(ins)
-            a.code.write(r1)
-            a.code.write(r2)
-          else:
-            ins.im = true
-            a.code.write(ins)
-            echo ins
-            a.code.write(r1)
-            # TODO check size, is pointer?
-            try:
-              discard parseHex(a2, d1)
-              a.code.write(d1)
-            except:
-              # TODO insert label's position
-              discard
-        else:
-          discard
-]#
-var a = newAssembler()
-a.compileFile("examples/ex01.asm")
-a.code.setPosition(0)
-echo a.code.readAll().toHex()
-echo $a[]
+  for label, pos in a.labels.pairs:
+    if not a.placeHolders.hasKey(label):
+      continue
+    for p in a.placeHolders[label]:
+      a.code.setPosition(p)
+      a.code.write(pos.DWORD)
+  a.code.setPosition(0)
+  result = a.code.readAll()
+
+proc compileFile*(a: Assembler, input: string, output: string) =
+  var res = a.compileString(readFile(input))
+  writeFile(output, res)
+
+when isMainModule:
+  proc check(input: string, output: string) =
+    var a = newAssembler()
+    var res = a.compileString(input).toHex()
+    #echo input, " => ", res
+    assert res == output
+
+  check("db 0x55", "55")
+  check("db 0x55,0x56,0x57", "555657")
+  check("db \"a\",0x55", "6155")
+  check("db \"hello\",13,10", "68656C6C6F1310")
+  check("dw 0x1234", "3412")
+  check("dw \"a\"", "6100")
+  check("dw \"ab\"", "6162")
+  check("dw \"abc\"", "61626300")
+  check("dd 0x12345678", "78563412")
+
+  var a = newAssembler()
+  a.compileFile("examples/ex01.asm", "examples/ex01")
