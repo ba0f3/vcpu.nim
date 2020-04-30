@@ -303,15 +303,36 @@ proc run*(cpu: VCPU): DWORD =
       # compare two registers
       cpu.read(b0)
       if b0 >= Regs.high: invalid
+      d0 = R{b0}.d
       if ins.im:
         cpu.read(d1)
-        trace op, b0.Regs, d1
+        if ins.fp and ins.lp:
+          trace op, "[" & $b0.Regs & "]" , "[" & $d1 & "]"
+          raise newException(ValueError, "invalid combination of opcode and operands")
+        elif ins.fp:
+          trace op, "[" & $b0.Regs & "]" , d1
+          d0 = cpu.code[R{b0}.d]
+        elif ins.lp:
+          trace op, b0.Regs, "[" & $d1 & "]"
+          d1 = cpu.code[d1]
+        else:
+          trace op, b0.Regs, d1
       else:
         cpu.read(b1)
         if b1 >= Regs.high: invalid
-        trace op, b0.Regs, b1.Regs
-        d1 = R{b1}.d
-      d0 = R{b0}.d
+        if ins.fp and ins.lp:
+          trace op, "[" & $b0.Regs & "]" , "[" & $b1.Regs & "]"
+          raise newException(ValueError, "invalid combination of opcode and operands")
+        elif ins.fp:
+          trace op, "[" & $b0.Regs & "]" , b1.Regs
+          d0 = cpu.code[R{b0}.d]
+          d1 = R{b1}.d
+        elif ins.lp:
+          trace op, b0.Regs, "[" & $b1.Regs & "]"
+          d1 = cpu.code[R{b1}.d]
+        else:
+          trace op, b0.Regs, b1.Regs
+          d1 = R{b1}.d
       cpu.regs.ZF = if d1 == d0: 1 else: 0
       cpu.regs.CF = if d1 > d0: 1 else: 0
     of INC:
