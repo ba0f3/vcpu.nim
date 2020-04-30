@@ -4,7 +4,7 @@ import private/[common, helpers]
 export common
 
 const
-  VCPU_DATA_SIZE {.intdefine.} = 1024
+  VCPU_DATA_SIZE {.intdefine.} = 10240
   VCPU_STACK_SIZE {.intdefine.} = 32
 
 type

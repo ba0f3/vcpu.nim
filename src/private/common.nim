@@ -67,7 +67,7 @@ type
   Regs* {.size: 1.} = enum
     #0  1  2  3  4  5  6  7
     AH AL BH BL CH CL DH DL
-    RA RB RC RD RE RF FG RH
+    AX BX CX DX EX FX GX HX
     R0 R1 R2 R3 R4 R5 R6 R7
 
 

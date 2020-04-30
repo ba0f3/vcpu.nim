@@ -1,36 +1,33 @@
 ## Compilation
-you will need NASM to compile
+Runner will compile asm into bytecode on-the-fly and execute it
+
 ```shell
-nasm ex01.asm
+nim c -d:release runner
 ```
 
 ## Usage
 runner requires cligen package
 
 ```shell
-nim c -d:release runner.nim
-./runner ex01
+./runner ex01.asm
 ```
 
 Output:
 ```
-Hello World!
+Hello world!
 ```
 
 ### example.asm
 ```shell
-nasm example.asm
-./runner --r0="pass pharse" example
+./runner --r0="pass pharse" example.asm
 ```
 
 ### strcmp.asm
 ```shell
-nasm strcmp.asm
-./runner --r0=str1 --r1=str2 strcmp
+./runner strcmp.asm --r0=str1 --r1=str2
 ```
 
 ### xor_encrypt.asm
 ```shell
-nasm xor_encrypt.asm
-./runner --r0=hello --r1=s3cret xor_encrypt
+./runner xor_encrypt.asm --r0=hello --r1=s3cret
 ```
