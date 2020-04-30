@@ -1,5 +1,3 @@
-%include "vm.inc"
-
 ; str1's address set to r0
 ; str2's address set to r1
 ; set r0 = 0 if to string equals
@@ -12,15 +10,15 @@ main:
   prnts
 
 strcmp:
-  movmrb r2, r0
-  movmrb r3, r1
+  mov r2, [r0]
+  mov r3, [r1]
   cmp r2, r3
   jz check_null
-  jb lower
-  ja greater
+  jl lower
+  jg greater
 
 check_null:
-  cmpb r2, 0
+  cmp r2, 0x00
   ; null reached
   jz equal
   inc r0
@@ -28,11 +26,11 @@ check_null:
   jmp strcmp
 
 equal:
-  movb r0, 0
+  mov r0, 0
   halt
 lower:
-  movb r0, 0xff
+  mov r0, 0xff
   halt
 greater:
-  movb r0, 1
+  mov r0, 0x01
   halt

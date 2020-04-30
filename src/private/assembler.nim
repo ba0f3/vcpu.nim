@@ -1,21 +1,9 @@
-import strutils, pegs, tables, streams, parseUtils
+import os, strutils, pegs, tables, streams, parseUtils
 import common, helpers
 
 # TODO: detect arg size by reg name, pointer address
 
-let
-  grammar = peg"""
-  ASM   <- ^ ( ( \n / label  / code) ig )* $
-  label <- \ident ':'
-  code  <- ins (\n / \s+ arg (',' arg )* )?
-  ins   <- \a+
-  arg   <- ' '* (reg / imm / name / '"' str '"') ' '*
-  reg   <- ('r' [0-7a-h]) / [a-d][hl]
-  name  <- \ident
-  str   <- ("\\" . / [^"])*
-  imm   <- '0x' [0-9a-f]+ / [0-9a-f]+ 'h' / \d+
-  ig    <- (\s / ';' @ \n)*
-"""
+let grammar = peg(readFile(joinPath(currentSourcePath.splitPath.head,  "grammar.peg")))
 
 type
   Assembler = ref object of RootObj
@@ -34,6 +22,7 @@ type
     STR
 
   Token = object of RootObj
+    isptr: bool
     case kind: TokenKind:
     of LABEL:
       l: string
@@ -59,8 +48,8 @@ proc lookupIns(ins: string): OpCode =
   var ins = ins.toUpperAscii()
   for i in OpCode.low .. OpCode.high:
     if ins == $i:
-      result = i
-      break
+      return i
+  raise newException(ValueError, "unknow instruction: " & ins )
 
 proc isReg(s: string, r: var Regs): bool =
   var s = s.toUpperAscii()
@@ -78,7 +67,10 @@ proc immToken(val: int): Token {.inline.} = Token(kind: IMM, i: val)
 proc strToken(val: string): Token {.inline.} = Token(kind: STR, s: val)
 
 proc tokenizer(s: string): seq[Token] =
-  var tokens: seq[Token]
+  var
+    tokens: seq[Token]
+    stack: seq[Token]
+
   let parseArithExpr = grammar.eventParser:
     pkNonTerminal:
       leave:
@@ -94,19 +86,26 @@ proc tokenizer(s: string): seq[Token] =
           of "reg":
             var reg: Regs
             if isReg(matchStr, reg):
-              tokens.add(regToken(reg))
+              stack.add(regToken(reg))
             else:
               raise newException(ValueError, "invalid register")
           of "name":
-            tokens.add(nameToken(matchStr))
+            stack.add(nameToken(matchStr))
+          of "ptr":
+            var token = stack.pop()
+            token.isptr = true
+            stack.add(token)
           of "str":
-            tokens.add(strToken(matchStr))
+            stack.add(strToken(matchStr))
           of "imm":
             var num: int
             discard parseHex(matchStr, num)
-            tokens.add(immToken(num))
+            stack.add(immToken(num))
+          of "arg":
+            tokens.add(stack.pop())
 
   discard parseArithExpr(s)
+  #echo tokens
   result = tokens
 
 proc writeArg(a: Assembler, t: Token) =
@@ -160,7 +159,8 @@ proc parseIns(a: Assembler, op: OpCode) =
     a1 = a.tokens[a.pos + 1]
     if kind == 2  and a1.kind != REG:
       ins.im = true
-    #echo op, " ", ins
+    if a1.isptr:
+      ins.fp = true
     a.code.write(ins)
     a.writeArg(a1)
   else:
@@ -169,6 +169,12 @@ proc parseIns(a: Assembler, op: OpCode) =
     a2 = a.tokens[a.pos + 2]
     if kind == 2 and a2.kind != REG:
       ins.im = true
+    if a1.isptr:
+      ins.fp = true
+    if a2.isptr:
+      ins.lp = true
+    if ins.fp and ins.lp:
+      raise newException(ValueError, "invalid combination of opcode and operands")
     a.code.write(ins)
     a.writeArg(a1)
     a.writeArg(a2)

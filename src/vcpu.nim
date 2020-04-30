@@ -8,8 +8,9 @@ const
   VCPU_STACK_SIZE {.intdefine.} = 32
 
 type
+
   REGISTERS = object
-    R: array[6, DWORD]
+    R: array[8, IMM]
     ZF {.bitsize:1.}: uint8
     CF {.bitsize:1.}: uint8
     PC, SP, BP: DWORD
@@ -79,9 +80,9 @@ proc write*[T](cpu: VCPU, input: T, pos: WORD|DWORD) =
   if tmpLen > cpu.codeLen.int:
     cpu.codeLen = tmpLen.DWORD
 
-proc setReg*(cpu: VCPU, reg: Regs, value: DWORD) {.inline.} = cpu.regs.R[reg.ord mod 6] = value
-proc setReg*(cpu: VCPU, r1: Regs, r2: Regs) {.inline.} = cpu.regs.R[r1.ord mod 6] = cpu.regs.R[r2.ord mod 6]
-proc getReg*(cpu: VCPU, reg: Regs): DWORD {.inline.} = cpu.regs.R[reg.ord mod 6]
+proc setReg*(cpu: VCPU, reg: Regs, value: DWORD) {.inline.} = cpu.regs.R[reg.ord mod 8].d = value
+proc setReg*(cpu: VCPU, r1: Regs, r2: Regs) {.inline.} = cpu.setReg(r1, cpu.regs.R[r2.ord mod 8].d)
+proc getReg*(cpu: VCPU, reg: Regs): DWORD {.inline.} = cpu.regs.R[reg.ord mod 8].d
 
 proc getZF*(cpu: VCPU): uint8 {.inline.} = cpu.regs.ZF
 proc getCF*(cpu: VCPU): uint8 {.inline.} = cpu.regs.CF
@@ -174,7 +175,7 @@ proc run*(cpu: VCPU): DWORD =
       when not defined(release):
         echo "[VCPU] ", cpu.regs
     of HALT:
-      trace op
+      trace op, "\t; 🚫"
       break
     of CALL:
       cpu.read(w0)
@@ -189,61 +190,93 @@ proc run*(cpu: VCPU): DWORD =
       if b0 >= Regs.high: invalid
       if ins.im:
         cpu.read(d0)
-        trace op, b0.Regs, d0
-        R[r(b0)[0]] = d0
+        if ins.fp and ins.lp:
+          trace op, "[" & $b0.Regs & "]" , "[" & $d0 & "]"
+          raise newException(ValueError, "invalid combination of opcode and operands")
+        elif ins.fp:
+          trace op, "[" & $b0.Regs & "]" , d0
+          cpu.code[R{b0}.d] = cast[ptr BYTE](addr d0)[]
+        elif ins.lp:
+          trace op, b0.Regs, "[" & $d0 & "]"
+          R{b0} = cpu.code[d0]
+        else:
+          trace op, b0.Regs, d0
+          R{b0} = d0
       else:
         cpu.read(b1)
         if b1 >= Regs.high: invalid
-        trace op, b0.Regs, b1.Regs
-        R[r(b0)[0]] = R[r(b1)[0]]
+        if ins.fp and ins.lp:
+          trace op, "[" & $b0.Regs & "]" , "[" & $b1.Regs & "]"
+          raise newException(ValueError, "invalid combination of opcode and operands")
+        elif ins.fp:
+          trace op, "[" & $b0.Regs & "]" , b1.Regs
+          cpu.code[R{b0}.d] = cast[ptr BYTE](addr R{b1}.d)[]
+        elif ins.lp:
+          trace op, b0.Regs, "[" & $b1.Regs & "]"
+          R{b0} = cpu.code[R{b1}.d]
+        else:
+          trace op, b0.Regs, b1.Regs
+          R{b0} = R{b1}.d
     of JMP:
       # unconditional jump
-      cpu.read(w0)
-      trace op, w0
-      if w0 > cpu.codeLen: bof
-      cpu.regs.PC = w0
+      cpu.read(d0)
+      trace op, d0
+      if d0 > cpu.codeLen: bof
+      cpu.regs.PC = d0
     of JZ:
       # jump if equal
-      cpu.read(w0)
-      trace op, w0
-      if w0 > cpu.codeLen: bof
+      cpu.read(d0)
+      if d0 > cpu.codeLen: bof
       if cpu.regs.ZF == 1:
-        cpu.regs.PC = w0
+        trace op, d0, "\t; ✔️"
+        cpu.regs.PC = d0
+      else:
+        trace op, d0, "\t; ❌"
     of JNZ:
       # jump if not equal
-      cpu.read(w0)
-      trace op, w0
-      if w0 > cpu.codeLen: bof
+      cpu.read(d0)
+      if d0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0:
-        cpu.regs.PC = w0
+        trace op, d0, "\t; ✔️"
+        cpu.regs.PC = d0
+      else:
+        trace op, d0, "\t; ❌"
     of JGE:
       # jump if greater or equal
-      cpu.read(w0)
-      trace op, w0
-      if w0 > cpu.codeLen: bof
+      cpu.read(d0)
+      if d0 > cpu.codeLen: bof
       if cpu.regs.ZF == 1 or cpu.regs.CF == 0:
-        cpu.regs.PC = w0
+        trace op, d0, "\t; ✔️"
+        cpu.regs.PC = d0
+      else:
+        trace op, d0, "\t; ❌"
     of JLE:
       # jump if less than or equal
-      cpu.read(w0)
-      trace op, w0
-      if w0 > cpu.codeLen: bof
+      cpu.read(d0)
+      if d0 > cpu.codeLen: bof
       if cpu.regs.ZF == 1 or cpu.regs.CF == 1:
-        cpu.regs.PC = w0
+        trace op, d0, "\t; ✔️"
+        cpu.regs.PC = d0
+      else:
+        trace op, d0, "\t; ❌"
     of JL:
       # jump if less than
-      cpu.read(w0)
-      trace op, w0
-      if w0 > cpu.codeLen: bof
+      cpu.read(d0)
+      if d0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0 and cpu.regs.CF == 1:
-        cpu.regs.PC = w0
+        trace op, d0, "\t; ✔️"
+        cpu.regs.PC = d0
+      else:
+        trace op, d0, "\t; ❌"
     of JG:
       # jump if greater
-      cpu.read(w0)
-      trace op, w0
-      if w0 > cpu.codeLen: bof
+      cpu.read(d0)
+      if d0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0 and cpu.regs.CF == 0:
-        cpu.regs.PC = w0
+        trace op, d0, "\t; ✔️"
+        cpu.regs.PC = d0
+      else:
+        trace op, d0, "\t; ❌"
     of XOR:
       cpu.read(b0)
       if b0 >= Regs.high: invalid
@@ -254,18 +287,18 @@ proc run*(cpu: VCPU): DWORD =
         cpu.read(b1)
         if b1 >= Regs.high: invalid
         trace op, b0.Regs, b1.Regs
-        d1 = R[b1]
-      d0 = R[b0]
+        d1 = R{b1}.d
+      d0 = R{b0}.d
       d0 = d0 xor d1
       cpu.regs.ZF = if d0 == 0: 1 else: 0
       cpu.regs.CF = 0
-      R[b0] = d0
+      R{b0} = d0
     of NOT:
       # Bitwise not on value in a register and save result in this register
       cpu.read(b0)
       if b0 >= Regs.high: invalid
       trace op, b0.Regs
-      R[b0] = not R[b0]
+      R{b0} = not R{b0}.d
     of CMP:
       # compare two registers
       cpu.read(b0)
@@ -277,20 +310,20 @@ proc run*(cpu: VCPU): DWORD =
         cpu.read(b1)
         if b1 >= Regs.high: invalid
         trace op, b0.Regs, b1.Regs
-        d1 = R[b1]
-      d0 = R[b0]
+        d1 = R{b1}.d
+      d0 = R{b0}.d
       cpu.regs.ZF = if d1 == d0: 1 else: 0
       cpu.regs.CF = if d1 > d0: 1 else: 0
     of INC:
       cpu.read(b0)
-      trace op, b0.Regs
+      trace op, b0.Regs, "\t; ➕"
       if b0 >= Regs.high: invalid
-      inc(R[b0])
+      inc(R{b0}.d)
     of DEC:
       cpu.read(b0)
-      trace op, b0.Regs
+      trace op, b0.Regs, "\t; ➖"
       if b0 >= Regs.high: invalid
-      dec(R[b0])
+      dec(R{b0}.d)
     of SHL:
       cpu.read(b0)
       if b0 >= Regs.high: invalid
@@ -301,8 +334,8 @@ proc run*(cpu: VCPU): DWORD =
         cpu.read(b1)
         if b1 >= Regs.high: invalid
         trace op, b0.Regs, b1.Regs
-        b2 = R[b1].BYTE
-      R[b0] = R[b0] shl b2
+        b2 = R{b1}.d.BYTE
+      R{b0} = R{b0}.d shl b2
     of SHR:
       cpu.read(b0)
       if b0 >= Regs.high: invalid
@@ -312,9 +345,9 @@ proc run*(cpu: VCPU): DWORD =
       else:
         cpu.read(b1)
         if b1 >= Regs.high: invalid
-        b2 = R[b1].BYTE
+        b2 = R{b1}.d.BYTE
         trace op, b0.Regs, b1.Regs
-      R[b0] = R[b0] shr b2
+      R{b0} = R{b0}.d shr b2
     of MOD:
       cpu.read(b0)
       if b0 >= Regs.high: invalid
@@ -325,8 +358,8 @@ proc run*(cpu: VCPU): DWORD =
       else:
         if b1 >= Regs.high: invalid
         trace op, b0.Regs, b1.Regs
-        d0 = R[b1]
-      R[b0] = R[b0] mod d0
+        d0 = R{b1}.d
+      R{b0} = R{b0}.d mod d0
     of PUSH:
       if ins.im:
         cpu.read(d0)
@@ -335,13 +368,13 @@ proc run*(cpu: VCPU): DWORD =
         cpu.read(b0)
         if b0 >= Regs.high: invalid
         trace op, b0.Regs
-        d0 = R[r(b0)[0]]
+        d0 = R{b0}.d
       cpu.push(d0)
     of POP:
       cpu.read(b0)
       trace op, b0.Regs
       if b0 >= Regs.high: invalid
-      R[b0] = cpu.pop()
+      R{b0} = cpu.pop()
     of PRNT:
       trace op
       let idx = cpu.pop()
@@ -355,8 +388,8 @@ proc run*(cpu: VCPU): DWORD =
       let idx = cpu.pop()
       echo cast[cstring](addr cpu.code[idx])
     else:
-      discard
-  result = R[0]
+      echo "Opcode is not implement yet: ", $op
+  result = R{0}.d
   cpu.lock.release()
 
 proc jmp*(cpu: VCPU, `addr`: DWORD): bool {.discardable.} =

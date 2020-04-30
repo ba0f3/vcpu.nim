@@ -58,7 +58,14 @@ type
   WORD* = uint16
   DWORD* = uint32
 
+  IMM* {.union.} = object
+    d*: DWORD
+    w*: array[2, WORD]
+    b*: array[4, BYTE]
+
+
   Regs* {.size: 1.} = enum
+    #0  1  2  3  4  5  6  7
     AH AL BH BL CH CL DH DL
     RA RB RC RD RE RF FG RH
     R0 R1 R2 R3 R4 R5 R6 R7
@@ -66,7 +73,6 @@ type
 
 opcodes:
   # op: nargs, type: 1: reg, 2: reg/imm
-  UKN   0, 0, 0x00
   NOP   0, 0
   MOV   2, 2
   JMP   1, 2
@@ -87,7 +93,7 @@ opcodes:
   OR    2, 2
   AND   2, 2
   NOT   1, 1
-  CMP   2, 1
+  CMP   2, 2
   PUSH  1, 2
   POP   1, 1
   PRNT  0, 0

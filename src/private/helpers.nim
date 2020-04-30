@@ -1,7 +1,7 @@
 import common, strutils
 
-template LOWORD*(d: DWORD): WORD = d.DWORD
-template HIWORD*(d: DWORD): WORD = (d shr 8).DWORD
+template LOWORD*(d: DWORD): WORD = d.WORD
+template HIWORD*(d: DWORD): WORD = (d shr 8).WORD
 template LOBYTE*(w: WORD): BYTE = w.BYTE
 template HIBYTE*(w: WORD): WORD = (w shr 8).BYTE
 
@@ -9,10 +9,40 @@ converter opcode2byte*(o: OpCode): BYTE = o.BYTE
 converter regs2byte*(r: Regs): BYTE = r.BYTE
 
 
-proc r*(idx: uint8): tuple[reg: BYTE, size: BYTE] =
-  var
-    reg = idx mod 6
-  result = (reg, 0'u8)
+#proc r*(idx: uint8): tuple[reg: BYTE, size: BYTE] =
+#  var
+#    reg = idx mod 8
+#  result = (reg, 0'u8)
+#  echo "r ", idx, " ", reg
+
+proc index(idx: uint8): BYTE =
+  if idx >= 8:
+    return idx.uint8 mod 8
+  return uint8(idx.int8 / 2)
+
+
+proc size(idx: BYTE): int =
+  var tmp = (idx.int8 / 8).int8
+  if tmp > 0:
+    return tmp * 2
+  result = 1
+
+
+proc `{}`*(r: ptr array[8, IMM], b: BYTE): ptr IMM =
+  result = unsafeAddr r[index(b)]
+
+proc `{}=`*(r: ptr array[8, IMM], b: BYTE, d: DWORD) =
+  case size(b)
+  of 4:
+    r{b}.d = d
+  of 2:
+    r{b}.w[0] = d.WORD
+  else:
+    echo "reg ", index(b)
+    echo "byt ", b mod 2
+    (unsafeAddr r[index(b)].b[b mod 2])[] = d.BYTE
+    #tmp[] = d.BYTE
+
 
 proc hexdump*(data: cstring, length: int) =
   var
