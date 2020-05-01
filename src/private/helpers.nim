@@ -24,7 +24,6 @@ macro debug*(args: varargs[untyped]): untyped =
 macro trace*(args: varargs[untyped]): untyped =
   result = newStmtList()
   when defined(trace):
-    result.add newCall("write", newIdentNode("stdout"), newStrLitNode("[VCPU] "))
     for n in args:
       result.add newCall("write", newIdentNode("stdout"), n)
       result.add newCall("write", newIdentNode("stdout"), newStrLitNode(" "))

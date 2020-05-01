@@ -15,11 +15,12 @@ loop:
   jmp loop          ; continue
 
 reset_key:
-  pop r1
-  push r1
+  pop l1
+  push l1
   jmp loop
 
 end:
-  pop r1
+  pop l1
   prntx
+  mov r0, 0
   halt

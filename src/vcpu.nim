@@ -151,56 +151,58 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
   cpu.lock.acquire()
   while true:
     if cpu.regs.PC >= cpu.codeLen: bof
+    when not defined(release):
+      var pc = toHex(cpu.regs.PC.WORD) & ":"
     cpu.read(ins)
     #echo ins
     op = ins.op
     case op
     of NOP:
-      trace op
+      trace pc, op
     of CALL:
       cpu.read(w0)
-      trace op, w0, "; PC =", cpu.regs.PC
+      trace pc, op, toHex(w0)
       cpu.push(cpu.regs.PC)
       cpu.regs.PC = w0
     of RET:
       cpu.regs.PC = cpu.pop()
-      trace op, "; PC =", cpu.regs.PC
+      trace pc, op, "; PC =", cpu.regs.PC
     of MOV:
       cpu.read(b0)
       if b0 > Regs.high: invalid
       if ins.im:
         cpu.read(d0, b0.Regs)
         if ins.fp and ins.lp:
-          trace op, "[" & $b0.Regs & "]" , "[" & $d0 & "]"
+          trace pc, op, "[" & $b0.Regs & "]" , "[" & $d0 & "]"
           raise newException(ValueError, "invalid combination of opcode and operands")
         elif ins.fp:
-          trace op, "[" & $b0.Regs & "]" , d0
+          trace pc, op, "[" & $b0.Regs & "]" , d0
           cpu.code[R{b0}.d] = cast[ptr BYTE](addr d0)[]
         elif ins.lp:
-          trace op, b0.Regs, "[" & $d0 & "]"
+          trace pc, op, b0.Regs, "[" & $d0 & "]"
           R{b0} = cpu.code[d0]
         else:
-          trace op, b0.Regs, d0
+          trace pc, op, b0.Regs, d0
           R{b0} = d0
       else:
         cpu.read(b1)
         if b1 > Regs.high: invalid
         if ins.fp and ins.lp:
-          trace op, "[" & $b0.Regs & "]" , "[" & $b1.Regs & "]"
+          trace pc, op, "[" & $b0.Regs & "]" , "[" & $b1.Regs & "]"
           raise newException(ValueError, "invalid combination of opcode and operands")
         elif ins.fp:
-          trace op, "[" & $b0.Regs & "]" , b1.Regs
+          trace pc, op, "[" & $b0.Regs & "]" , b1.Regs
           cpu.code[R{b0}.d] = cast[ptr BYTE](addr R{b1}.d)[]
         elif ins.lp:
-          trace op, b0.Regs, "[" & $b1.Regs & "]"
+          trace pc, op, b0.Regs, "[" & $b1.Regs & "]"
           R{b0} = cpu.code[R{b1}.d]
         else:
-          trace op, b0.Regs, b1.Regs
+          trace pc, op, b0.Regs, b1.Regs
           R{b0} = R{b1}.d
     of JMP:
       # unconditional jump
       cpu.read(w0)
-      trace op, w0
+      trace pc, op, toHex(w0), "\t; ↩️"
       if w0 > cpu.codeLen: bof
       cpu.regs.PC = w0
     of JZ:
@@ -208,55 +210,55 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       cpu.read(w0)
       if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 1:
-        trace op, w0, "\t; ✔️"
+        trace pc, op, toHex(w0), "\t; ✔️"
         cpu.regs.PC = w0
       else:
-        trace op, w0, "\t; ❌"
+        trace pc, op, toHex(w0), "\t; ❌"
     of JNZ:
       # jump if not equal
       cpu.read(w0)
       if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0:
-        trace op, w0, "\t; ✔️"
+        trace pc, op, toHex(w0), "\t; ✔️"
         cpu.regs.PC = w0
       else:
-        trace op, w0, "\t; ❌"
+        trace pc, op, toHex(w0), "\t; ❌"
     of JGE:
       # jump if greater or equal
       cpu.read(w0)
       if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 1 or cpu.regs.CF == 0:
-        trace op, w0, "\t; ✔️"
+        trace pc, op, toHex(w0), "\t; ✔️"
         cpu.regs.PC = w0
       else:
-        trace op, w0, "\t; ❌"
+        trace pc, op, toHex(w0), "\t; ❌"
     of JLE:
       # jump if less than or equal
       cpu.read(w0)
       if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 1 or cpu.regs.CF == 1:
-        trace op, w0, "\t; ✔️"
+        trace pc, op, toHex(w0), "\t; ✔️"
         cpu.regs.PC = w0
       else:
-        trace op, d0, "\t; ❌"
+        trace pc, op, d0, "\t; ❌"
     of JL:
       # jump if less than
       cpu.read(w0)
       if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0 and cpu.regs.CF == 1:
-        trace op, w0, "\t; ✔️"
+        trace pc, op, toHex(w0), "\t; ✔️"
         cpu.regs.PC = w0
       else:
-        trace op, w0, "\t; ❌"
+        trace pc, op, toHex(w0), "\t; ❌"
     of JG:
       # jump if greater
       cpu.read(w0)
       if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0 and cpu.regs.CF == 0:
-        trace op, w0, "\t; ✔️"
+        trace pc, op, toHex(w0), "\t; ✔️"
         cpu.regs.PC = w0
       else:
-        trace op, w0, "\t; ❌"
+        trace pc, op, toHex(w0), "\t; ❌"
     of ADD:
       cpu.read(b0)
       if b0 > Regs.high: invalid
@@ -267,12 +269,12 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
         if b1 > Regs.high: invalid
         d0 = R{b1}.d
       if ins.fp:
-        trace op, "[" & $b0.Regs & "]" , d0
+        trace pc, op, "[" & $b0.Regs & "]" , d0
         if R{b0}.d > cpu.codeLen: bof
         d1 = cpu.code[R{b0}.d] + d0
         cpu.write(d1, R{b0}.d)
       else:
-        trace op, b0.Regs, d0
+        trace pc, op, b0.Regs, d0
         R{b0} = R{b0}.d + d0
     of SUB:
       cpu.read(b0)
@@ -284,23 +286,23 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
         if b1 > Regs.high: invalid
         d0 = R{b1}.d
       if ins.fp:
-        trace op, "[" & $b0.Regs & "]" , d0
+        trace pc, op, "[" & $b0.Regs & "]" , d0
         if R{b0}.d > cpu.codeLen: bof
         d1 = cpu.code[R{b0}.d] - d0
         cpu.write(d1, R{b0}.d)
       else:
-        trace op, b0.Regs, d0
+        trace pc, op, b0.Regs, d0
         R{b0} = R{b0}.d - d0
     of INC:
       cpu.read(b0)
-      trace op, b0.Regs, "\t; ➕"
+      trace pc, op, b0.Regs
       if b0 > Regs.high: invalid
       d0 = R{b0}.d
       inc(d0)
       R{b0} = d0
     of DEC:
       cpu.read(b0)
-      trace op, b0.Regs, "\t; ➖"
+      trace pc, op, b0.Regs
       if b0 > Regs.high: invalid
       d0 = R{b0}.d
       dec(d0)
@@ -310,11 +312,11 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       if b0 > Regs.high: invalid
       if ins.im:
         cpu.read(b2)
-        trace op, b0.Regs, b2
+        trace pc, op, b0.Regs, b2
       else:
         cpu.read(b1)
         if b1 > Regs.high: invalid
-        trace op, b0.Regs, b1.Regs
+        trace pc, op, b0.Regs, b1.Regs
         b2 = R{b1}.d.BYTE
       R{b0} = R{b0}.d shl b2
     of SHR:
@@ -322,12 +324,12 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       if b0 > Regs.high: invalid
       if ins.im:
         cpu.read(b2)
-        trace op, b0.Regs, b2
+        trace pc, op, b0.Regs, b2
       else:
         cpu.read(b1)
         if b1 > Regs.high: invalid
         b2 = R{b1}.d.BYTE
-        trace op, b0.Regs, b1.Regs
+        trace pc, op, b0.Regs, b1.Regs
       R{b0} = R{b0}.d shr b2
     of MOD:
       cpu.read(b0)
@@ -335,10 +337,10 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       cpu.read(b1)
       if ins.im:
         cpu.read(d0, b0.Regs)
-        trace op, b0.Regs, d0
+        trace pc, op, b0.Regs, d0
       else:
         if b1 > Regs.high: invalid
-        trace op, b0.Regs, b1.Regs
+        trace pc, op, b0.Regs, b1.Regs
         d0 = R{b1}.d
       R{b0} = R{b0}.d mod d0
     of XOR:
@@ -346,11 +348,11 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       if b0 > Regs.high: invalid
       if ins.im:
         cpu.read(d1, b0.Regs)
-        trace op, b0.Regs, d1
+        trace pc, op, b0.Regs, d1
       else:
         cpu.read(b1)
         if b1 > Regs.high: invalid
-        trace op, b0.Regs, b1.Regs
+        trace pc, op, b0.Regs, b1.Regs
         d1 = R{b1}.d
       d0 = R{b0}.d
       d0 = d0 xor d1
@@ -362,11 +364,11 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       if b0 > Regs.high: invalid
       if ins.im:
         cpu.read(d1, b0.Regs)
-        trace op, b0.Regs, d1
+        trace pc, op, b0.Regs, d1
       else:
         cpu.read(b1)
         if b1 > Regs.high: invalid
-        trace op, b0.Regs, b1.Regs
+        trace pc, op, b0.Regs, b1.Regs
         d1 = R{b1}.d
       d0 = R{b0}.d
       d0 = d0 or d1
@@ -378,11 +380,11 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       if b0 > Regs.high: invalid
       if ins.im:
         cpu.read(d1)
-        trace op, b0.Regs, d1
+        trace pc, op, b0.Regs, d1
       else:
         cpu.read(b1)
         if b1 > Regs.high: invalid
-        trace op, b0.Regs, b1.Regs
+        trace pc, op, b0.Regs, b1.Regs
         d1 = R{b1}.d
       d0 = R{b0}.d
       d0 = d0 and d1
@@ -393,7 +395,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       # Bitwise not on value in a register and save result in this register
       cpu.read(b0)
       if b0 > Regs.high: invalid
-      trace op, b0.Regs
+      trace pc, op, b0.Regs
       R{b0} = not R{b0}.d
     of CMP:
       # compare two registers
@@ -402,43 +404,37 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       d0 = R{b0}.d
       if ins.im:
         cpu.read(d1, b0.Regs)
-        if ins.fp and ins.lp:
-          trace op, "[" & $b0.Regs & "]" , "[" & $d1 & "]"
-          raise newException(ValueError, "invalid combination of opcode and operands")
-        elif ins.fp:
-          trace op, "[" & $b0.Regs & "]" , d1
+        if ins.fp:
+          trace pc, op, "[" & $b0.Regs & "]" , d1
           d0 = cpu.code[R{b0}.d]
         elif ins.lp:
-          trace op, b0.Regs, "[" & $d1 & "]"
+          trace pc, op, b0.Regs, "[" & $d1 & "]"
           d1 = cpu.code[d1]
         else:
-          trace op, b0.Regs, d1
+          trace pc, op, b0.Regs, d1
       else:
         cpu.read(b1)
         if b1 > Regs.high: invalid
-        if ins.fp and ins.lp:
-          trace op, "[" & $b0.Regs & "]" , "[" & $b1.Regs & "]"
-          raise newException(ValueError, "invalid combination of opcode and operands")
-        elif ins.fp:
-          trace op, "[" & $b0.Regs & "]" , b1.Regs
+        if ins.fp:
+          trace pc, op, "[" & $b0.Regs & "]" , b1.Regs
           d0 = cpu.code[R{b0}.d]
           d1 = R{b1}.d
         elif ins.lp:
-          trace op, b0.Regs, "[" & $b1.Regs & "]"
+          trace pc, op, b0.Regs, "[" & $b1.Regs & "]"
           d1 = cpu.code[R{b1}.d]
         else:
-          trace op, b0.Regs, b1.Regs
+          trace pc, op, b0.Regs, b1.Regs
           d1 = R{b1}.d
       cpu.regs.ZF = if d1 == d0: 1 else: 0
       cpu.regs.CF = if d1 > d0: 1 else: 0
     of PUSH:
       if ins.im:
         cpu.read(d0)
-        trace op, d0
+        trace pc, op, d0
       else:
         cpu.read(b0)
         if b0 > Regs.high: invalid
-        trace op, b0.Regs
+        trace pc, op, b0.Regs
         if b0.Regs == SP:
           d0 = cpu.regs.SP
         else:
@@ -446,19 +442,19 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       cpu.push(d0)
     of POP:
       cpu.read(b0)
-      trace op, b0.Regs
+      trace pc, op, b0.Regs
       if b0 > Regs.high: invalid
       R{b0} = cpu.pop()
     of PRNT:
-      trace op
+      trace pc, op
       let idx = cpu.pop()
       echo cpu.code[idx].char
     of PRNTX:
-      trace op
+      trace pc, op
       let idx = cpu.pop()
       echo ($cast[cstring](addr cpu.code[idx])).toHex()
     of PRNTS:
-      trace op
+      trace pc, op
       let idx = cpu.pop()
       echo cast[cstring](addr cpu.code[idx])
     of DUMP:
@@ -485,7 +481,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
           d1 = R{b1}.d
       assert d0 == d1
     of HALT:
-      trace op, "\t; 🚫"
+      trace pc, op, "\t; ⛔"
       break
     of DB, DW, DD:
       # special instructions, should never go here
