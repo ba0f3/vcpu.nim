@@ -121,7 +121,6 @@ proc writeArg(a: Assembler, t: Token, prev = Token(kind: NONE)) =
     if prev.kind == REG:
       case size(prev.r)
       of 1:
-        echo "here"
         a.code.write(t.i.BYTE)
       of 2:
         a.code.write(t.i.WORD)

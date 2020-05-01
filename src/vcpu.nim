@@ -158,10 +158,10 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
     of NOP:
       trace op
     of CALL:
-      cpu.read(d0)
-      trace op, d0, "; PC =", cpu.regs.PC
+      cpu.read(w0)
+      trace op, w0, "; PC =", cpu.regs.PC
       cpu.push(cpu.regs.PC)
-      cpu.regs.PC = d0
+      cpu.regs.PC = w0
     of RET:
       cpu.regs.PC = cpu.pop()
       trace op, "; PC =", cpu.regs.PC
@@ -261,7 +261,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       cpu.read(b0)
       if b0 > Regs.high: invalid
       if ins.im:
-        cpu.read(d0)
+        cpu.read(d0, b0.Regs)
       else:
         cpu.read(b1)
         if b1 > Regs.high: invalid
@@ -345,7 +345,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       cpu.read(b0)
       if b0 > Regs.high: invalid
       if ins.im:
-        cpu.read(d1)
+        cpu.read(d1, b0.Regs)
         trace op, b0.Regs, d1
       else:
         cpu.read(b1)
@@ -361,7 +361,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       cpu.read(b0)
       if b0 > Regs.high: invalid
       if ins.im:
-        cpu.read(d1)
+        cpu.read(d1, b0.Regs)
         trace op, b0.Regs, d1
       else:
         cpu.read(b1)
@@ -401,7 +401,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       if b0 > Regs.high: invalid
       d0 = R{b0}.d
       if ins.im:
-        cpu.read(d1)
+        cpu.read(d1, b0.Regs)
         if ins.fp and ins.lp:
           trace op, "[" & $b0.Regs & "]" , "[" & $d1 & "]"
           raise newException(ValueError, "invalid combination of opcode and operands")
