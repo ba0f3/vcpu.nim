@@ -171,12 +171,6 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
     case op
     of NOP:
       trace op
-    of DUMP:
-      when not defined(release):
-        hexdump(cast[cstring](addr cpu.regs), sizeof(REGISTERS))
-    of HALT:
-      trace op, "\t; 🚫"
-      break
     of CALL:
       cpu.read(w0)
       trace op, w0, "; PC =", cpu.regs.PC
@@ -277,6 +271,91 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
         cpu.regs.PC = d0
       else:
         trace op, d0, "\t; ❌"
+    of ADD:
+      cpu.read(b0)
+      if b0 > Regs.high: invalid
+      if ins.im:
+        cpu.read(d0)
+      else:
+        cpu.read(b1)
+        if b1 > Regs.high: invalid
+        d0 = R{b1}.d
+      if ins.fp:
+        trace op, "[" & $b0.Regs & "]" , d0
+        if R{b0}.d > cpu.codeLen: bof
+        d1 = cpu.code[R{b0}.d] + d0
+        cpu.write(d1, R{b0}.d)
+      else:
+        trace op, b0.Regs, d0
+        R{b0} = R{b0}.d + d0
+    of SUB:
+      cpu.read(b0)
+      if b0 > Regs.high: invalid
+      if ins.im:
+        cpu.read(d0)
+      else:
+        cpu.read(b1)
+        if b1 > Regs.high: invalid
+        d0 = R{b1}.d
+      if ins.fp:
+        trace op, "[" & $b0.Regs & "]" , d0
+        if R{b0}.d > cpu.codeLen: bof
+        d1 = cpu.code[R{b0}.d] - d0
+        cpu.write(d1, R{b0}.d)
+      else:
+        trace op, b0.Regs, d0
+        R{b0} = R{b0}.d - d0
+    of INC:
+      cpu.read(b0)
+      trace op, b0.Regs, "\t; ➕"
+      if b0 > Regs.high: invalid
+      d0 = R{b0}.d
+      inc(d0)
+      R{b0} = d0
+    of DEC:
+      cpu.read(b0)
+      trace op, b0.Regs, "\t; ➖"
+      if b0 > Regs.high: invalid
+      d0 = R{b0}.d
+      dec(d0)
+      R{b0} = d0
+    of SHL:
+      cpu.read(b0)
+      if b0 > Regs.high: invalid
+      if ins.im:
+        cpu.read(b2)
+        trace op, b0.Regs, b2
+      else:
+        cpu.read(b1)
+        if b1 > Regs.high: invalid
+        trace op, b0.Regs, b1.Regs
+        b2 = R{b1}.d.BYTE
+      R{b0} = R{b0}.d shl b2
+    of SHR:
+      cpu.read(b0)
+      if b0 > Regs.high: invalid
+      if ins.im:
+        cpu.read(b2)
+        trace op, b0.Regs, b2
+      else:
+        cpu.read(b1)
+        if b1 > Regs.high: invalid
+        b2 = R{b1}.d.BYTE
+        trace op, b0.Regs, b1.Regs
+      R{b0} = R{b0}.d shr b2
+    of MOD:
+      cpu.read(b0)
+      if b0 > Regs.high: invalid
+      cpu.read(b1)
+      if ins.im:
+        # TODO read reg size
+        cpu.read(d0)
+        trace op, b0.Regs, d0
+      else:
+        if b1 > Regs.high: invalid
+        trace op, b0.Regs, b1.Regs
+        d0 = R{b1}.d
+      R{b0} = R{b0}.d mod d0
     of XOR:
       cpu.read(b0)
       if b0 > Regs.high: invalid
@@ -290,6 +369,38 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
         d1 = R{b1}.d
       d0 = R{b0}.d
       d0 = d0 xor d1
+      cpu.regs.ZF = if d0 == 0: 1 else: 0
+      cpu.regs.CF = 0
+      R{b0} = d0
+    of OR:
+      cpu.read(b0)
+      if b0 > Regs.high: invalid
+      if ins.im:
+        cpu.read(d1)
+        trace op, b0.Regs, d1
+      else:
+        cpu.read(b1)
+        if b1 > Regs.high: invalid
+        trace op, b0.Regs, b1.Regs
+        d1 = R{b1}.d
+      d0 = R{b0}.d
+      d0 = d0 or d1
+      cpu.regs.ZF = if d0 == 0: 1 else: 0
+      cpu.regs.CF = 0
+      R{b0} = d0
+    of AND:
+      cpu.read(b0)
+      if b0 > Regs.high: invalid
+      if ins.im:
+        cpu.read(d1)
+        trace op, b0.Regs, d1
+      else:
+        cpu.read(b1)
+        if b1 > Regs.high: invalid
+        trace op, b0.Regs, b1.Regs
+        d1 = R{b1}.d
+      d0 = R{b0}.d
+      d0 = d0 and d1
       cpu.regs.ZF = if d0 == 0: 1 else: 0
       cpu.regs.CF = 0
       R{b0} = d0
@@ -335,52 +446,6 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
           d1 = R{b1}.d
       cpu.regs.ZF = if d1 == d0: 1 else: 0
       cpu.regs.CF = if d1 > d0: 1 else: 0
-    of INC:
-      cpu.read(b0)
-      trace op, b0.Regs, "\t; ➕"
-      if b0 > Regs.high: invalid
-      inc(R{b0}.d)
-    of DEC:
-      cpu.read(b0)
-      trace op, b0.Regs, "\t; ➖"
-      if b0 > Regs.high: invalid
-      dec(R{b0}.d)
-    of SHL:
-      cpu.read(b0)
-      if b0 > Regs.high: invalid
-      if ins.im:
-        cpu.read(b2)
-        trace op, b0.Regs, b2
-      else:
-        cpu.read(b1)
-        if b1 > Regs.high: invalid
-        trace op, b0.Regs, b1.Regs
-        b2 = R{b1}.d.BYTE
-      R{b0} = R{b0}.d shl b2
-    of SHR:
-      cpu.read(b0)
-      if b0 > Regs.high: invalid
-      if ins.im:
-        cpu.read(b2)
-        trace op, b0.Regs, b2
-      else:
-        cpu.read(b1)
-        if b1 > Regs.high: invalid
-        b2 = R{b1}.d.BYTE
-        trace op, b0.Regs, b1.Regs
-      R{b0} = R{b0}.d shr b2
-    of MOD:
-      cpu.read(b0)
-      if b0 > Regs.high: invalid
-      cpu.read(b1)
-      if ins.im:
-        cpu.read(d0)
-        trace op, b0.Regs, d0
-      else:
-        if b1 > Regs.high: invalid
-        trace op, b0.Regs, b1.Regs
-        d0 = R{b1}.d
-      R{b0} = R{b0}.d mod d0
     of PUSH:
       if ins.im:
         cpu.read(d0)
@@ -408,8 +473,37 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       trace op
       let idx = cpu.pop()
       echo cast[cstring](addr cpu.code[idx])
-    else:
-      echo "Opcode is not implement yet: ", $op
+    of DUMP:
+      when not defined(release):
+        hexdump(cast[cstring](addr cpu.regs), sizeof(REGISTERS))
+        hexdump(cast[cstring](addr cpu.code), cpu.codeLen.int)
+    of ASSRT:
+      cpu.read(b0)
+      if b0 > Regs.high: invalid
+      if ins.fp:
+        d0 = cpu.code[R{b0}.d]
+      else:
+        d0 = R{b0}.d
+      if ins.im:
+        # TODO respect reg size
+        cpu.read(d1)
+        if ins.lp:
+          d1 = cpu.code[d1]
+      else:
+        cpu.read(b1)
+        if b1 > Regs.high: invalid
+        if ins.lp:
+          d1 = cpu.code[d1]
+        else:
+          d1 = R{b1}.d
+      assert d0 == d1
+    of HALT:
+      trace op, "\t; 🚫"
+      break
+    of DB, DW, DD:
+      # special instructions, should never go here
+      discard
+
   result = R{0}.d
   cpu.lock.release()
 

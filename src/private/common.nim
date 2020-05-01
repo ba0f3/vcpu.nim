@@ -66,14 +66,17 @@ type
 
   Regs* {.size: 1.} = enum
     #0  1  2  3  4  5  6  7
-    H0 L0 H1 L1 H2 L2 H3 L3
+    L0 H0 L1 H1 L2 H2 L3 H3
     W0 W1 W2 W3 W4 W5 W6 W7
     R0 R1 R2 R3 R4 R5 R6 R7
+    SP BP
 
 
 opcodes:
   # op: nargs, type: 1: reg, 2: reg/imm
   NOP   0, 0
+  CALL  1, 2
+  RET   0, 0
   MOV   2, 2
   JMP   1, 2
   JZ    1, 2
@@ -99,10 +102,9 @@ opcodes:
   PRNT  0, 0
   PRNTX 0, 0
   PRNTS 0, 0
-  HALT  0, 0
-  CALL  1, 2
-  RET   0, 0
   DUMP  0, 0
+  ASSRT 2, 2
+  HALT  0, 0
 
   # special op, resv, data size
   DB    0, 1

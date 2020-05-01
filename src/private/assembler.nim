@@ -142,6 +142,7 @@ proc parseData(a: Assembler, op: OpCode) =
         let pad = size - (next.s.len mod size)
         a.code.write('\0'.repeat(pad))
     elif next.kind == IMM:
+      echo "sizeof ", sizeof(next.i)
       a.code.writeData(next.i.unsafeAddr, size)
     inc(a.pos)
     if a.pos + 1 >= a.tokens.len:
@@ -207,7 +208,6 @@ proc compileString*(a: Assembler, input: string): TaintedString =
       raise newException(ValueError, "it should never go here")
 
   for label, str in a.inlineString.pairs:
-    echo "label ", label
     let pos = a.code.getPosition()
     a.code.write(str)
     for p in a.placeHolders[label]:

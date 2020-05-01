@@ -38,8 +38,6 @@ proc `{}=`*(r: ptr array[8, IMM], b: BYTE, d: DWORD) =
   of 2:
     r{b}.w[0] = d.WORD
   else:
-    echo "reg ", index(b)
-    echo "byt ", b mod 2
     (unsafeAddr r[index(b)].b[b mod 2])[] = d.BYTE
     #tmp[] = d.BYTE
 
