@@ -15,6 +15,7 @@ type
     pos: int
 
   TokenKind = enum
+    NONE
     LABEL
     INS
     REG
@@ -37,6 +38,8 @@ type
       i: int
     of STR:
       s: string
+    else:
+      discard
 
 proc newAssembler*(): Assembler =
   result = new(Assembler)
@@ -110,23 +113,37 @@ proc tokenizer(s: string): seq[Token] =
   #echo tokens
   result = tokens
 
-proc writeArg(a: Assembler, t: Token) =
+proc writeArg(a: Assembler, t: Token, prev = Token(kind: NONE)) =
   case t.kind:
   of REG:
     a.code.write(t.r)
   of IMM:
-    a.code.write(t.i.DWORD)
+    if prev.kind == REG:
+      case size(prev.r)
+      of 1:
+        echo "here"
+        a.code.write(t.i.BYTE)
+      of 2:
+        a.code.write(t.i.WORD)
+      else:
+        a.code.write(t.i.DWORD)
+    else:
+      a.code.write(t.i.DWORD)
   of NAME:
+    if prev.kind == REG and size(prev.r) > sizeof(WORD):
+      raise newException(ValueError, "label's uses 2 bytes only")
     if not a.placeHolders.hasKey(t.n):
       a.placeHolders[t.n] = @[a.code.getPosition()]
     else:
       a.placeHolders[t.n].add(a.code.getPosition())
-    a.code.write(0.DWORD)
+    a.code.write(0.WORD)
   of STR:
+    if prev.kind == REG and size(prev.r) > sizeof(WORD):
+      raise newException(ValueError, "string constant's address uses 2 bytes only")
     let name = "_str_" & $a.inlineString.len
     a.inlineString[name] = t.s
     a.placeHolders[name] = @[a.code.getPosition()]
-    a.code.write(0.DWORD)
+    a.code.write(0.WORD)
   else:
     echo t.kind, " not supported yet"
 
@@ -142,7 +159,6 @@ proc parseData(a: Assembler, op: OpCode) =
         let pad = size - (next.s.len mod size)
         a.code.write('\0'.repeat(pad))
     elif next.kind == IMM:
-      echo "sizeof ", sizeof(next.i)
       a.code.writeData(next.i.unsafeAddr, size)
     inc(a.pos)
     if a.pos + 1 >= a.tokens.len:
@@ -185,7 +201,7 @@ proc parseIns(a: Assembler, op: OpCode) =
       raise newException(ValueError, "invalid combination of opcode and operands")
     a.code.write(ins)
     a.writeArg(a1)
-    a.writeArg(a2)
+    a.writeArg(a2, a1)
   inc(a.pos, nargs)
 
 proc compileString*(a: Assembler, input: string): TaintedString =
@@ -212,14 +228,14 @@ proc compileString*(a: Assembler, input: string): TaintedString =
     a.code.write(str)
     for p in a.placeHolders[label]:
       a.code.setPosition(p)
-      a.code.write(pos.DWORD)
+      a.code.write(pos.WORD)
 
   for label, pos in a.labels.pairs:
     if not a.placeHolders.hasKey(label):
       continue
     for p in a.placeHolders[label]:
       a.code.setPosition(p)
-      a.code.write(pos.DWORD)
+      a.code.write(pos.WORD)
   a.code.setPosition(0)
   result = a.code.readAll()
 

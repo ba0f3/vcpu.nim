@@ -31,33 +31,19 @@ proc err(t: typedesc, msg: string) {.inline.} = raise newException(t, msg)
 template invalid() = err(IOError, "invalid register")
 template bof() = err(BufferOverflowException, "buffer overflow")
 
-proc `[]`(R: ptr array[6, DWORD], idx: BYTE): DWORD = R[idx mod 6]
+#proc `[]`(R: ptr array[6, DWORD], idx: BYTE): DWORD = R[idx mod 6]
 #template R(idx: int): DWORD = cpu.regs.R[idx]
-
-macro debug(args: varargs[untyped]): untyped =
-  result = newStmtList()
-  when not defined(release):
-    for n in args:
-      if n.kind != nnkStrLit:
-        result.add newCall("write", newIdentNode("stdout"), newLit(n.repr))
-        result.add newCall("write", newIdentNode("stdout"), newLit(": "))
-      result.add newCall("write", newIdentNode("stdout"), n)
-      result.add newCall("write", newIdentNode("stdout"), newLit(" "))
-    result.add newCall("writeLine", newIdentNode("stdout"), newLit(""))
-    result.add newCall("flushFile", newIdentNode("stdout"))
-
-macro trace(args: varargs[untyped]): untyped =
-  result = newStmtList()
-  when defined(trace):
-    result.add newCall("write", newIdentNode("stdout"), newStrLitNode("[VCPU] "))
-    for n in args:
-      result.add newCall("write", newIdentNode("stdout"), n)
-      result.add newCall("write", newIdentNode("stdout"), newStrLitNode(" "))
-    result.add newCall("write", newIdentNode("stdout"), newStrLitNode("\n"))
 
 proc read[T](cpu: VCPU, output: var T) =
   copyMem(addr output, addr cpu.code[cpu.regs.PC], sizeof(T))
   inc(cpu.regs.PC, sizeof(T))
+
+proc read[T](cpu: VCPU, output: var T, reg: Regs) =
+  let size = size(reg)
+  if size > sizeof(T): bof
+  copyMem(addr output, addr cpu.code[cpu.regs.PC], size)
+  inc(cpu.regs.PC, size)
+
 
 proc read*[T](cpu: VCPU, output: var T, pos: WORD|DWORD) =
   ## Read data directly from VCPU memory
@@ -172,10 +158,10 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
     of NOP:
       trace op
     of CALL:
-      cpu.read(w0)
-      trace op, w0, "; PC =", cpu.regs.PC
+      cpu.read(d0)
+      trace op, d0, "; PC =", cpu.regs.PC
       cpu.push(cpu.regs.PC)
-      cpu.regs.PC = w0
+      cpu.regs.PC = d0
     of RET:
       cpu.regs.PC = cpu.pop()
       trace op, "; PC =", cpu.regs.PC
@@ -183,7 +169,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       cpu.read(b0)
       if b0 > Regs.high: invalid
       if ins.im:
-        cpu.read(d0)
+        cpu.read(d0, b0.Regs)
         if ins.fp and ins.lp:
           trace op, "[" & $b0.Regs & "]" , "[" & $d0 & "]"
           raise newException(ValueError, "invalid combination of opcode and operands")
@@ -213,64 +199,64 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
           R{b0} = R{b1}.d
     of JMP:
       # unconditional jump
-      cpu.read(d0)
-      trace op, d0
-      if d0 > cpu.codeLen: bof
-      cpu.regs.PC = d0
+      cpu.read(w0)
+      trace op, w0
+      if w0 > cpu.codeLen: bof
+      cpu.regs.PC = w0
     of JZ:
       # jump if equal
-      cpu.read(d0)
-      if d0 > cpu.codeLen: bof
+      cpu.read(w0)
+      if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 1:
-        trace op, d0, "\t; ✔️"
-        cpu.regs.PC = d0
+        trace op, w0, "\t; ✔️"
+        cpu.regs.PC = w0
       else:
-        trace op, d0, "\t; ❌"
+        trace op, w0, "\t; ❌"
     of JNZ:
       # jump if not equal
-      cpu.read(d0)
-      if d0 > cpu.codeLen: bof
+      cpu.read(w0)
+      if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0:
-        trace op, d0, "\t; ✔️"
-        cpu.regs.PC = d0
+        trace op, w0, "\t; ✔️"
+        cpu.regs.PC = w0
       else:
-        trace op, d0, "\t; ❌"
+        trace op, w0, "\t; ❌"
     of JGE:
       # jump if greater or equal
-      cpu.read(d0)
-      if d0 > cpu.codeLen: bof
+      cpu.read(w0)
+      if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 1 or cpu.regs.CF == 0:
-        trace op, d0, "\t; ✔️"
-        cpu.regs.PC = d0
+        trace op, w0, "\t; ✔️"
+        cpu.regs.PC = w0
       else:
-        trace op, d0, "\t; ❌"
+        trace op, w0, "\t; ❌"
     of JLE:
       # jump if less than or equal
-      cpu.read(d0)
-      if d0 > cpu.codeLen: bof
+      cpu.read(w0)
+      if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 1 or cpu.regs.CF == 1:
-        trace op, d0, "\t; ✔️"
-        cpu.regs.PC = d0
+        trace op, w0, "\t; ✔️"
+        cpu.regs.PC = w0
       else:
         trace op, d0, "\t; ❌"
     of JL:
       # jump if less than
-      cpu.read(d0)
-      if d0 > cpu.codeLen: bof
+      cpu.read(w0)
+      if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0 and cpu.regs.CF == 1:
-        trace op, d0, "\t; ✔️"
-        cpu.regs.PC = d0
+        trace op, w0, "\t; ✔️"
+        cpu.regs.PC = w0
       else:
-        trace op, d0, "\t; ❌"
+        trace op, w0, "\t; ❌"
     of JG:
       # jump if greater
-      cpu.read(d0)
-      if d0 > cpu.codeLen: bof
+      cpu.read(w0)
+      if w0 > cpu.codeLen: bof
       if cpu.regs.ZF == 0 and cpu.regs.CF == 0:
-        trace op, d0, "\t; ✔️"
-        cpu.regs.PC = d0
+        trace op, w0, "\t; ✔️"
+        cpu.regs.PC = w0
       else:
-        trace op, d0, "\t; ❌"
+        trace op, w0, "\t; ❌"
     of ADD:
       cpu.read(b0)
       if b0 > Regs.high: invalid
@@ -348,8 +334,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       if b0 > Regs.high: invalid
       cpu.read(b1)
       if ins.im:
-        # TODO read reg size
-        cpu.read(d0)
+        cpu.read(d0, b0.Regs)
         trace op, b0.Regs, d0
       else:
         if b1 > Regs.high: invalid
@@ -454,7 +439,10 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
         cpu.read(b0)
         if b0 > Regs.high: invalid
         trace op, b0.Regs
-        d0 = R{b0}.d
+        if b0.Regs == SP:
+          d0 = cpu.regs.SP
+        else:
+          d0 = R{b0}.d
       cpu.push(d0)
     of POP:
       cpu.read(b0)
@@ -485,8 +473,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       else:
         d0 = R{b0}.d
       if ins.im:
-        # TODO respect reg size
-        cpu.read(d1)
+        cpu.read(d1, b0.Regs)
         if ins.lp:
           d1 = cpu.code[d1]
       else:

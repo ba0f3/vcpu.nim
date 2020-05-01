@@ -1,4 +1,4 @@
-import common, strutils
+import common, strutils, macros
 
 template LOWORD*(d: DWORD): WORD = d.WORD
 template HIWORD*(d: DWORD): WORD = (d shr 8).WORD
@@ -9,11 +9,27 @@ converter opcode2byte*(o: OpCode): BYTE = o.BYTE
 converter regs2byte*(r: Regs): BYTE = r.BYTE
 
 
-#proc r*(idx: uint8): tuple[reg: BYTE, size: BYTE] =
-#  var
-#    reg = idx mod 8
-#  result = (reg, 0'u8)
-#  echo "r ", idx, " ", reg
+macro debug*(args: varargs[untyped]): untyped =
+  result = newStmtList()
+  when not defined(release):
+    for n in args:
+      if n.kind != nnkStrLit:
+        result.add newCall("write", newIdentNode("stdout"), newLit(n.repr))
+        result.add newCall("write", newIdentNode("stdout"), newLit(": "))
+      result.add newCall("write", newIdentNode("stdout"), n)
+      result.add newCall("write", newIdentNode("stdout"), newLit(" "))
+    result.add newCall("writeLine", newIdentNode("stdout"), newLit(""))
+    result.add newCall("flushFile", newIdentNode("stdout"))
+
+macro trace*(args: varargs[untyped]): untyped =
+  result = newStmtList()
+  when defined(trace):
+    result.add newCall("write", newIdentNode("stdout"), newStrLitNode("[VCPU] "))
+    for n in args:
+      result.add newCall("write", newIdentNode("stdout"), n)
+      result.add newCall("write", newIdentNode("stdout"), newStrLitNode(" "))
+    result.add newCall("write", newIdentNode("stdout"), newStrLitNode("\n"))
+
 
 proc index(idx: uint8): BYTE =
   if idx >= 8:
@@ -21,8 +37,8 @@ proc index(idx: uint8): BYTE =
   return uint8(idx.int8 / 2)
 
 
-proc size(idx: BYTE): int =
-  var tmp = (idx.int8 / 8).int8
+proc size*(r: Regs): int =
+  var tmp = (r.int8 / 8).int8
   if tmp > 0:
     return tmp * 2
   result = 1
@@ -32,7 +48,7 @@ proc `{}`*(r: ptr array[8, IMM], b: BYTE): ptr IMM =
   result = unsafeAddr r[index(b)]
 
 proc `{}=`*(r: ptr array[8, IMM], b: BYTE, d: DWORD) =
-  case size(b)
+  case size(b.Regs)
   of 4:
     r{b}.d = d
   of 2:
@@ -48,7 +64,7 @@ proc hexdump*(data: cstring, length: int) =
     i, j: int
   ascii[16] = '\0'
   for i in 0..15:
-    stdout.write toHex(i.BYTE)
+    stdout.write toHex(i.BYTE).toLowerAscii()
     stdout.write " "
   stdout.write "\n"
   for i in 0..<length:
@@ -70,38 +86,3 @@ proc hexdump*(data: cstring, length: int) =
         stdout.write "   "
         inc(j)
       echo "| ", cast[cstring](addr ascii)
-
-
-
-
-  #[
-
-void hexdump(const void* data, size_t size) {
-	char ascii[17];
-	size_t i, j;
-	ascii[16] = '\0';
-	for (i = 0; i < size; ++i) {
-		printf("%02X ", ((unsigned char*)data)[i]);
-		if (((unsigned char*)data)[i] >= ' ' && ((unsigned char*)data)[i] <= '~') {
-			ascii[i % 16] = ((unsigned char*)data)[i];
-		} else {
-			ascii[i % 16] = '.';
-		}
-		if ((i+1) % 8 == 0 || i+1 == size) {
-			printf(" ");
-			if ((i+1) % 16 == 0) {
-				printf("|  %s \n", ascii);
-			} else if (i+1 == size) {
-				ascii[(i+1) % 16] = '\0';
-				if ((i+1) % 16 <= 8) {
-					printf(" ");
-				}
-				for (j = (i+1) % 16; j < 16; ++j) {
-					printf("   ");
-				}
-				printf("|  %s \n", ascii);
-			}
-		}
-	}
-}
-  ]#
