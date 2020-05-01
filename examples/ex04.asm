@@ -1,17 +1,17 @@
 
 main:
-  mov l0, 1
-  mov w1, 2
-  mov r2, sp
-  ;add
+  push 65
+  push 1
+  call add
+  pop r2
+  dump
   halt
 
 add:
-  push sp
-  sub sp, 4
-  mov bp, sp
-  pop sp
+  pop bp
+  pop r0
+  pop r1
+  add r0, r1
+  push r0
+  push bp
   ret
-
-spell:
-  db "a"

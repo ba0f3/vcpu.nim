@@ -166,16 +166,13 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       cpu.regs.PC = w0
     of RET:
       cpu.regs.PC = cpu.pop()
-      trace pc, op, "; PC =", cpu.regs.PC
+      trace pc, op
     of MOV:
       cpu.read(b0)
       if b0 > Regs.high: invalid
       if ins.im:
         cpu.read(d0, b0.Regs)
-        if ins.fp and ins.lp:
-          trace pc, op, "[" & $b0.Regs & "]" , "[" & $d0 & "]"
-          raise newException(ValueError, "invalid combination of opcode and operands")
-        elif ins.fp:
+        if ins.fp:
           trace pc, op, "[" & $b0.Regs & "]" , d0
           cpu.code[R{b0}.d] = cast[ptr BYTE](addr d0)[]
         elif ins.lp:
@@ -187,10 +184,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       else:
         cpu.read(b1)
         if b1 > Regs.high: invalid
-        if ins.fp and ins.lp:
-          trace pc, op, "[" & $b0.Regs & "]" , "[" & $b1.Regs & "]"
-          raise newException(ValueError, "invalid combination of opcode and operands")
-        elif ins.fp:
+        if ins.fp:
           trace pc, op, "[" & $b0.Regs & "]" , b1.Regs
           cpu.code[R{b0}.d] = cast[ptr BYTE](addr R{b1}.d)[]
         elif ins.lp:
@@ -441,6 +435,8 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
           trace pc, op, b0.Regs
           if b0.Regs == SP:
             d0 = cpu.regs.SP
+          elif b0.Regs == BP:
+            d0 = cpu.regs.BP
           else:
             d0 = R{b0}.d
       cpu.push(d0)
@@ -448,7 +444,12 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       cpu.read(b0)
       trace pc, op, b0.Regs
       if b0 > Regs.high: invalid
-      R{b0} = cpu.pop()
+      if b0.Regs == SP:
+        cpu.regs.SP = cpu.pop()
+      elif b0.Regs == BP:
+        cpu.regs.BP = cpu.pop()
+      else:
+        R{b0} = cpu.pop()
     of PRNT:
       trace pc, op
       let idx = cpu.pop()
