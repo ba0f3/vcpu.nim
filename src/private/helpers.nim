@@ -49,6 +49,10 @@ proc hexdump*(data: cstring, length: int) =
     ascii: array[17, char]
     i, j: int
   ascii[16] = '\0'
+  for i in 0..15:
+    stdout.write toHex(i.BYTE)
+    stdout.write " "
+  stdout.write "\n"
   for i in 0..<length:
     stdout.write toHex(data[i].BYTE)
     stdout.write " "

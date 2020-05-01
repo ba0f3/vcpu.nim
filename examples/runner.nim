@@ -30,7 +30,7 @@ proc fun(paths: seq[string], r0="", r1="", r2="", r3="", r4="", r5="", r6="", r7
     cpu.setReg(R6, cpu.parseInput(r6))
     cpu.setReg(R7, cpu.parseInput(r7))
 
-    echo "exit code: ", cpu.run()
-  result = 0
+    result = cpu.run().int
+  echo "exit code: ", result
 
 import cligen; dispatch(fun)

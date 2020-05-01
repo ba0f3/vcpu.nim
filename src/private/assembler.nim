@@ -1,7 +1,7 @@
-import os, strutils, pegs, tables, streams, parseUtils
+import os, strutils, pegs, tables, strtabs, streams, parseUtils
 import common, helpers
 
-# TODO: detect arg size by reg name, pointer address
+# TODO: fix data size for operations
 
 let grammar = peg(readFile(joinPath(currentSourcePath.splitPath.head,  "grammar.peg")))
 
@@ -10,6 +10,7 @@ type
     code: StringStream
     labels: Table[string, int]
     placeHolders: Table[string, seq[int]]
+    inlineString: StringTableRef
     tokens: seq[Token]
     pos: int
 
@@ -42,6 +43,7 @@ proc newAssembler*(): Assembler =
   result.code = newStringStream()
   result.labels = initTable[string, int]()
   result.placeHolders = initTable[string, seq[int]]()
+  result.inlineString = newStringTable(modeCaseInsensitive)
 
 
 proc lookupIns(ins: string): OpCode =
@@ -119,6 +121,11 @@ proc writeArg(a: Assembler, t: Token) =
       a.placeHolders[t.n] = @[a.code.getPosition()]
     else:
       a.placeHolders[t.n].add(a.code.getPosition())
+    a.code.write(0.DWORD)
+  of STR:
+    let name = "_str_" & $a.inlineString.len
+    a.inlineString[name] = t.s
+    a.placeHolders[name] = @[a.code.getPosition()]
     a.code.write(0.DWORD)
   else:
     echo t.kind, " not supported yet"
@@ -198,6 +205,14 @@ proc compileString*(a: Assembler, input: string): TaintedString =
       inc(a.pos)
     else:
       raise newException(ValueError, "it should never go here")
+
+  for label, str in a.inlineString.pairs:
+    echo "label ", label
+    let pos = a.code.getPosition()
+    a.code.write(str)
+    for p in a.placeHolders[label]:
+      a.code.setPosition(p)
+      a.code.write(pos.DWORD)
 
   for label, pos in a.labels.pairs:
     if not a.placeHolders.hasKey(label):

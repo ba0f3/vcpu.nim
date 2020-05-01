@@ -154,7 +154,7 @@ proc dump*(cpu: VCPU): DWORD =
   # dump loaded code to asm
   discard
 
-proc run*(cpu: VCPU): DWORD =
+proc run*(cpu: VCPU): DWORD {.discardable.} =
   var
     ins: Instruction
     op: OpCode
@@ -173,7 +173,7 @@ proc run*(cpu: VCPU): DWORD =
       trace op
     of DUMP:
       when not defined(release):
-        echo "[VCPU] ", cpu.regs
+        hexdump(cast[cstring](addr cpu.regs), sizeof(REGISTERS))
     of HALT:
       trace op, "\t; 🚫"
       break
@@ -187,7 +187,7 @@ proc run*(cpu: VCPU): DWORD =
       trace op, "; PC =", cpu.regs.PC
     of MOV:
       cpu.read(b0)
-      if b0 >= Regs.high: invalid
+      if b0 > Regs.high: invalid
       if ins.im:
         cpu.read(d0)
         if ins.fp and ins.lp:
@@ -204,7 +204,7 @@ proc run*(cpu: VCPU): DWORD =
           R{b0} = d0
       else:
         cpu.read(b1)
-        if b1 >= Regs.high: invalid
+        if b1 > Regs.high: invalid
         if ins.fp and ins.lp:
           trace op, "[" & $b0.Regs & "]" , "[" & $b1.Regs & "]"
           raise newException(ValueError, "invalid combination of opcode and operands")
@@ -279,13 +279,13 @@ proc run*(cpu: VCPU): DWORD =
         trace op, d0, "\t; ❌"
     of XOR:
       cpu.read(b0)
-      if b0 >= Regs.high: invalid
+      if b0 > Regs.high: invalid
       if ins.im:
         cpu.read(d1)
         trace op, b0.Regs, d1
       else:
         cpu.read(b1)
-        if b1 >= Regs.high: invalid
+        if b1 > Regs.high: invalid
         trace op, b0.Regs, b1.Regs
         d1 = R{b1}.d
       d0 = R{b0}.d
@@ -296,13 +296,13 @@ proc run*(cpu: VCPU): DWORD =
     of NOT:
       # Bitwise not on value in a register and save result in this register
       cpu.read(b0)
-      if b0 >= Regs.high: invalid
+      if b0 > Regs.high: invalid
       trace op, b0.Regs
       R{b0} = not R{b0}.d
     of CMP:
       # compare two registers
       cpu.read(b0)
-      if b0 >= Regs.high: invalid
+      if b0 > Regs.high: invalid
       d0 = R{b0}.d
       if ins.im:
         cpu.read(d1)
@@ -319,7 +319,7 @@ proc run*(cpu: VCPU): DWORD =
           trace op, b0.Regs, d1
       else:
         cpu.read(b1)
-        if b1 >= Regs.high: invalid
+        if b1 > Regs.high: invalid
         if ins.fp and ins.lp:
           trace op, "[" & $b0.Regs & "]" , "[" & $b1.Regs & "]"
           raise newException(ValueError, "invalid combination of opcode and operands")
@@ -338,46 +338,46 @@ proc run*(cpu: VCPU): DWORD =
     of INC:
       cpu.read(b0)
       trace op, b0.Regs, "\t; ➕"
-      if b0 >= Regs.high: invalid
+      if b0 > Regs.high: invalid
       inc(R{b0}.d)
     of DEC:
       cpu.read(b0)
       trace op, b0.Regs, "\t; ➖"
-      if b0 >= Regs.high: invalid
+      if b0 > Regs.high: invalid
       dec(R{b0}.d)
     of SHL:
       cpu.read(b0)
-      if b0 >= Regs.high: invalid
+      if b0 > Regs.high: invalid
       if ins.im:
         cpu.read(b2)
         trace op, b0.Regs, b2
       else:
         cpu.read(b1)
-        if b1 >= Regs.high: invalid
+        if b1 > Regs.high: invalid
         trace op, b0.Regs, b1.Regs
         b2 = R{b1}.d.BYTE
       R{b0} = R{b0}.d shl b2
     of SHR:
       cpu.read(b0)
-      if b0 >= Regs.high: invalid
+      if b0 > Regs.high: invalid
       if ins.im:
         cpu.read(b2)
         trace op, b0.Regs, b2
       else:
         cpu.read(b1)
-        if b1 >= Regs.high: invalid
+        if b1 > Regs.high: invalid
         b2 = R{b1}.d.BYTE
         trace op, b0.Regs, b1.Regs
       R{b0} = R{b0}.d shr b2
     of MOD:
       cpu.read(b0)
-      if b0 >= Regs.high: invalid
+      if b0 > Regs.high: invalid
       cpu.read(b1)
       if ins.im:
         cpu.read(d0)
         trace op, b0.Regs, d0
       else:
-        if b1 >= Regs.high: invalid
+        if b1 > Regs.high: invalid
         trace op, b0.Regs, b1.Regs
         d0 = R{b1}.d
       R{b0} = R{b0}.d mod d0
@@ -387,14 +387,14 @@ proc run*(cpu: VCPU): DWORD =
         trace op, d0
       else:
         cpu.read(b0)
-        if b0 >= Regs.high: invalid
+        if b0 > Regs.high: invalid
         trace op, b0.Regs
         d0 = R{b0}.d
       cpu.push(d0)
     of POP:
       cpu.read(b0)
       trace op, b0.Regs
-      if b0 >= Regs.high: invalid
+      if b0 > Regs.high: invalid
       R{b0} = cpu.pop()
     of PRNT:
       trace op
