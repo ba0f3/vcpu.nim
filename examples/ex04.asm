@@ -8,6 +8,7 @@ main:
 
 add:
   push sp
+  sub sp, 4
   mov bp, sp
   pop sp
   ret

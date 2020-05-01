@@ -434,11 +434,15 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       else:
         cpu.read(b0)
         if b0 > Regs.high: invalid
-        trace pc, op, b0.Regs
-        if b0.Regs == SP:
-          d0 = cpu.regs.SP
+        if ins.fp:
+          trace pc, op, "[" & $b0.Regs  & "]"
+          d0 = cpu.code[R{b0}.d]
         else:
-          d0 = R{b0}.d
+          trace pc, op, b0.Regs
+          if b0.Regs == SP:
+            d0 = cpu.regs.SP
+          else:
+            d0 = R{b0}.d
       cpu.push(d0)
     of POP:
       cpu.read(b0)
