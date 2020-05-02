@@ -13,14 +13,14 @@ strcmp:
   mov r2, [r0]
   mov r3, [r1]
   cmp r2, r3
-  jz check_null
-  jl lower
-  jg greater
+  je check_null
+  jle lower
+  jge greater
 
 check_null:
   cmp r2, 0x00
   ; null reached
-  jz equal
+  je equal
   inc r0
   inc r1
   jmp strcmp

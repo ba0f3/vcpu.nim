@@ -99,12 +99,12 @@ opcodes:
   CMP   2, 2
   PUSH  1, 2
   POP   1, 1
-  PRNT  0, 0
+  #PRNT  0, 0
   PRNTX 0, 0
   PRNTS 0, 0
-  DUMP  0, 0 # 0x1C
+  DUMP  0, 0 # 0x1B
   ASSRT 2, 2
-  HALT  0, 0 # 0x1E
+  HALT  0, 0 # 0x1D
 
   # special op, resv, data size
   DB    0, 1

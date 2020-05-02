@@ -5,7 +5,7 @@ export common
 
 const
   VCPU_DATA_SIZE {.intdefine.} = 10240
-  VCPU_STACK_SIZE {.intdefine.} = 32
+  VCPU_STACK_SIZE {.intdefine.} = 128
 
 type
 
@@ -479,10 +479,10 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
         cpu.regs.BP = cpu.pop()
       else:
         R{b0} = cpu.pop()
-    of PRNT:
-      trace pc, op
-      let idx = cpu.pop()
-      echo cpu.code[idx].char
+    #of PRNT:
+    #  trace pc, op
+    #  let idx = cpu.pop()
+    #  echo cpu.code[idx].char
     of PRNTX:
       trace pc, op
       let idx = cpu.pop()

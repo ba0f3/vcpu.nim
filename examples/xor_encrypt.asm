@@ -9,9 +9,9 @@ loop:
   inc l0            ; move r0 and r1 one byte forward
   inc l1
   cmp [l0], 0x00    ; check if input is end (null byte)
-  jz end            ; jump to `end` if null
+  je end            ; jump to `end` if null
   cmp [l1], 0       ; check if key is end
-  jz reset_key      ; jump to `reset_key` if null
+  je reset_key      ; jump to `reset_key` if null
   jmp loop          ; continue
 
 reset_key:

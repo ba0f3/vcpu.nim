@@ -133,7 +133,7 @@ proc writeArg(a: Assembler, t: Token, prev = Token(kind: NONE)) =
     else:
       a.code.write(t.i.DWORD)
   of NAME:
-    var size = 4
+    var size = 2
     if prev.kind == REG:
       size = size(prev.r)
     var ph = Placeholder(size: size, pos: a.code.getPosition)
@@ -149,7 +149,7 @@ proc writeArg(a: Assembler, t: Token, prev = Token(kind: NONE)) =
     else:
       a.code.write(0.DWORD)
   of STR:
-    var size = 4
+    var size = 2
     if prev.kind == REG:
       size = size(prev.r)
     let name = "_str_" & $a.inlineString.len
