@@ -161,12 +161,12 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       trace pc, op
     of CALL:
       cpu.read(w0)
-      trace pc, op, toHex(w0)
+      trace pc, op, toHex(w0), "\t; ☎️"
       cpu.push(cpu.regs.PC)
       cpu.regs.PC = w0
     of RET:
       cpu.regs.PC = cpu.pop()
-      trace pc, op
+      trace pc, op, "\t: 🔙"
     of MOV:
       cpu.read(b0)
       if b0 > Regs.high: invalid

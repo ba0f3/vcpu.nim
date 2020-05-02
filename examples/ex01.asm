@@ -1,4 +1,6 @@
 
+#include "lib/echo.asm"
+
 main: ; entry point
   mov r0, 1 ;    hell yeah
   mov r1, 2
@@ -8,9 +10,8 @@ main: ; entry point
   mov r5, 6
   mov r6, 7
   mov w7, msg
-  dump
   push w7
-  prnts
+  call echo
   mov l0, 0
   halt
 

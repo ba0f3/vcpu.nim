@@ -11,6 +11,8 @@ type
     pos: int
 
   Assembler = ref object of RootObj
+    basePath: string
+    includes: seq[string]
     code: StringStream
     labels: Table[string, int]
     placeholders: Table[string, seq[Placeholder]]
@@ -47,6 +49,7 @@ type
 
 proc newAssembler*(): Assembler =
   result = new(Assembler)
+  result.basePath = getAppDir()
   result.code = newStringStream()
   result.labels = initTable[string, int]()
   result.placeholders = initTable[string, seq[Placeholder]]()
@@ -75,10 +78,10 @@ proc nameToken(val: string): Token {.inline.} = Token(kind: NAME, n: val)
 proc immToken(val: int): Token {.inline.} = Token(kind: IMM, i: val)
 proc strToken(val: string): Token {.inline.} = Token(kind: STR, s: val)
 
-proc tokenizer(s: string): seq[Token] =
-  var
-    tokens: seq[Token]
-    stack: seq[Token]
+proc tokenizer(a: Assembler, t: Token)
+
+proc tokenizer(a: Assembler, s: string) =
+  var stack: seq[Token]
 
   let parseArithExpr = grammar.eventParser:
     pkNonTerminal:
@@ -87,11 +90,15 @@ proc tokenizer(s: string): seq[Token] =
           let matchStr = s.substr(start, start+length-1)
           #echo p.nt.name, " => ", matchStr
           case p.nt.name
+          of "inc":
+            var t = stack.pop()
+            assert t.kind == STR
+            a.tokenizer(t)
           of "label":
-            tokens.add(labelToken(matchStr[0..^2]))
+            a.tokens.add(labelToken(matchStr[0..^2]))
           of "ins":
             var ins = lookupIns(matchStr)
-            tokens.add(insToken(ins))
+            a.tokens.add(insToken(ins))
           of "reg":
             var reg: Regs
             if isReg(matchStr, reg):
@@ -111,11 +118,21 @@ proc tokenizer(s: string): seq[Token] =
             discard parseHex(matchStr, num)
             stack.add(immToken(num))
           of "arg":
-            tokens.add(stack.pop())
-
+            a.tokens.add(stack.pop())
   discard parseArithExpr(s)
-  #echo tokens
-  result = tokens
+
+  while a.includes.len > 0:
+    let path = a.includes.pop()
+    a.tokenizer(readFile(path))
+
+proc tokenizer(a: Assembler, t: Token) =
+  assert t.kind == STR
+  let path = joinPath(a.basePath, t.s)
+  if not path.fileExists:
+    raise newException(IOError, "include file not found: " & path)
+  if path notin a.includes:
+    a.includes.add(path)
+
 
 proc writeArg(a: Assembler, t: Token, prev = Token(kind: NONE)) =
   case t.kind:
@@ -223,7 +240,7 @@ proc parseIns(a: Assembler, op: OpCode) =
   inc(a.pos, nargs)
 
 proc compileString*(a: Assembler, input: string): TaintedString =
-  a.tokens = tokenizer(input)
+  a.tokenizer(input)
 
   while a.pos < a.tokens.len:
     var token = a.tokens[a.pos]
@@ -271,8 +288,9 @@ proc compileString*(a: Assembler, input: string): TaintedString =
   result = a.code.readAll()
 
 proc compileFile*(a: Assembler, input: string, output: string) =
+  a.basePath = expandFilename(input).splitPath.head
   var res = a.compileString(readFile(input))
-  writeFile(output, res)
+  writeFile(joinPath(a.basePath, output), res)
 
 when isMainModule:
   proc check(input: string, output: string) =

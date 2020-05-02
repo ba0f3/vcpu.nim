@@ -1,4 +1,5 @@
-ASM   <- ^ ( ( \n / label  / code)* ig )* $
+ASM   <- ( ( \n / inc / label  / code)* ig )*
+inc   <- '#include' \s+  '"' str '"'
 label <- ident ':'
 code  <- ins (\n / \s+ arg (',' arg )* )?
 ins   <- \a+
