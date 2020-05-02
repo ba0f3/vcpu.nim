@@ -74,19 +74,17 @@ type
 
 opcodes:
   # op: nargs, type: 1: reg, 2: reg/imm
-  NOP   0, 0
+  NOP   0, 0, 0x00
   CALL  1, 2
   RET   0, 0
   MOV   2, 2
   JMP   1, 2
-  JZ    1, 2
-  JNZ   1, 2
+  JE    1, 2
+  JNE   1, 2
   JGE   1, 2
   JLE   1, 2
-  JL    1, 2
-  JG    1, 2
   ADD   2, 2
-  SUB   2, 2
+  SUB   2, 2 # 0x0A
   MUL   2, 2
   DIV   1, 1
   INC   1, 1
@@ -96,7 +94,7 @@ opcodes:
   MOD   2, 2
   XOR   2, 2
   OR    2, 2
-  AND   2, 2
+  AND   2, 2 # 0x14
   NOT   1, 1
   CMP   2, 2
   PUSH  1, 2
@@ -104,9 +102,9 @@ opcodes:
   PRNT  0, 0
   PRNTX 0, 0
   PRNTS 0, 0
-  DUMP  0, 0
+  DUMP  0, 0 # 0x1C
   ASSRT 2, 2
-  HALT  0, 0
+  HALT  0, 0 # 0x1E
 
   # special op, resv, data size
   DB    0, 1

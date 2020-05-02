@@ -7,11 +7,11 @@ main: ; entry point
   mov r4, 5
   mov r5, 6
   mov r6, 7
-  mov r7, msg
+  mov w7, msg
   dump
-  push r7
+  push w7
   prnts
-  mov r0, 0
+  mov l0, 0
   halt
 
 msg:

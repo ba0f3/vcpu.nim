@@ -199,7 +199,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       trace pc, op, toHex(w0), "\t; ↩️"
       if w0 > cpu.codeLen: bof
       cpu.regs.PC = w0
-    of JZ:
+    of JE:
       # jump if equal
       cpu.read(w0)
       if w0 > cpu.codeLen: bof
@@ -208,7 +208,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
         cpu.regs.PC = w0
       else:
         trace pc, op, toHex(w0), "\t; ❌"
-    of JNZ:
+    of JNE:
       # jump if not equal
       cpu.read(w0)
       if w0 > cpu.codeLen: bof
@@ -235,6 +235,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
         cpu.regs.PC = w0
       else:
         trace pc, op, d0, "\t; ❌"
+    #[
     of JL:
       # jump if less than
       cpu.read(w0)
@@ -253,6 +254,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
         cpu.regs.PC = w0
       else:
         trace pc, op, toHex(w0), "\t; ❌"
+    ]#
     of ADD:
       cpu.read(b0)
       if b0 > Regs.high: invalid

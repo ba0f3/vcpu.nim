@@ -6,10 +6,14 @@ import common, helpers
 let grammar = peg(readFile(joinPath(currentSourcePath.splitPath.head,  "grammar.peg")))
 
 type
+  Placeholder = object
+    size: int
+    pos: int
+
   Assembler = ref object of RootObj
     code: StringStream
     labels: Table[string, int]
-    placeHolders: Table[string, seq[int]]
+    placeholders: Table[string, seq[Placeholder]]
     inlineString: StringTableRef
     tokens: seq[Token]
     pos: int
@@ -45,7 +49,7 @@ proc newAssembler*(): Assembler =
   result = new(Assembler)
   result.code = newStringStream()
   result.labels = initTable[string, int]()
-  result.placeHolders = initTable[string, seq[int]]()
+  result.placeholders = initTable[string, seq[Placeholder]]()
   result.inlineString = newStringTable(modeCaseInsensitive)
 
 
@@ -81,7 +85,7 @@ proc tokenizer(s: string): seq[Token] =
       leave:
         if p.nt.name != "ig" and length > 0:
           let matchStr = s.substr(start, start+length-1)
-          echo p.nt.name, " => ", matchStr
+          #echo p.nt.name, " => ", matchStr
           case p.nt.name
           of "label":
             tokens.add(labelToken(matchStr[0..^2]))
@@ -129,20 +133,35 @@ proc writeArg(a: Assembler, t: Token, prev = Token(kind: NONE)) =
     else:
       a.code.write(t.i.DWORD)
   of NAME:
-    if prev.kind == REG and size(prev.r) > sizeof(WORD):
-      raise newException(ValueError, "label's uses 2 bytes only")
-    if not a.placeHolders.hasKey(t.n):
-      a.placeHolders[t.n] = @[a.code.getPosition()]
+    var size = 4
+    if prev.kind == REG:
+      size = size(prev.r)
+    var ph = Placeholder(size: size, pos: a.code.getPosition)
+    if not a.placeholders.hasKey(t.n):
+      a.placeholders[t.n] = @[ph]
     else:
-      a.placeHolders[t.n].add(a.code.getPosition())
-    a.code.write(0.WORD)
+      a.placeholders[t.n].add(ph)
+    case size
+    of 1:
+      a.code.write(0.BYTE)
+    of 2:
+      a.code.write(0.WORD)
+    else:
+      a.code.write(0.DWORD)
   of STR:
-    if prev.kind == REG and size(prev.r) > sizeof(WORD):
-      raise newException(ValueError, "string constant's address uses 2 bytes only")
+    var size = 4
+    if prev.kind == REG:
+      size = size(prev.r)
     let name = "_str_" & $a.inlineString.len
     a.inlineString[name] = t.s
-    a.placeHolders[name] = @[a.code.getPosition()]
-    a.code.write(0.WORD)
+    a.placeholders[name] = @[Placeholder(size: size, pos: a.code.getPosition)]
+    case size
+    of 1:
+      a.code.write(0.BYTE)
+    of 2:
+      a.code.write(0.WORD)
+    else:
+      a.code.write(0.DWORD)
   else:
     echo t.kind, " not supported yet"
 
@@ -225,16 +244,29 @@ proc compileString*(a: Assembler, input: string): TaintedString =
   for label, str in a.inlineString.pairs:
     let pos = a.code.getPosition()
     a.code.write(str)
-    for p in a.placeHolders[label]:
-      a.code.setPosition(p)
-      a.code.write(pos.WORD)
+    for p in a.placeholders[label]:
+      a.code.setPosition(p.pos)
+      case p.size
+      of 1:
+        a.code.write(pos.BYTE)
+      of 2:
+        a.code.write(pos.WORD)
+      else:
+        a.code.write(pos.DWORD)
+
 
   for label, pos in a.labels.pairs:
-    if not a.placeHolders.hasKey(label):
+    if not a.placeholders.hasKey(label):
       continue
-    for p in a.placeHolders[label]:
-      a.code.setPosition(p)
-      a.code.write(pos.WORD)
+    for p in a.placeholders[label]:
+      a.code.setPosition(p.pos)
+      case p.size
+      of 1:
+        a.code.write(pos.BYTE)
+      of 2:
+        a.code.write(pos.WORD)
+      else:
+        a.code.write(pos.DWORD)
   a.code.setPosition(0)
   result = a.code.readAll()
 
