@@ -87,6 +87,8 @@ opcodes:
   JG    1, 2
   ADD   2, 2
   SUB   2, 2
+  MUL   2, 2
+  DIV   1, 1
   INC   1, 1
   DEC   1, 1
   SHL   2, 2

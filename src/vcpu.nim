@@ -265,7 +265,8 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       if ins.fp:
         trace pc, op, "[" & $b0.Regs & "]" , d0
         if R{b0}.d > cpu.codeLen: bof
-        d1 = cpu.code[R{b0}.d] + d0
+        cpu.read(d1, R{b0}.d)
+        d1 += d0
         cpu.write(d1, R{b0}.d)
       else:
         trace pc, op, b0.Regs, d0
@@ -282,11 +283,37 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       if ins.fp:
         trace pc, op, "[" & $b0.Regs & "]" , d0
         if R{b0}.d > cpu.codeLen: bof
-        d1 = cpu.code[R{b0}.d] - d0
+        cpu.read(d1, R{b0}.d)
+        d1 -= d0
         cpu.write(d1, R{b0}.d)
       else:
         trace pc, op, b0.Regs, d0
         R{b0} = R{b0}.d - d0
+    of MUL:
+      cpu.read(b0)
+      if b0 > Regs.high: invalid
+      if ins.im:
+        cpu.read(d0, b0.Regs)
+      else:
+        cpu.read(b1)
+        if b1 > Regs.high: invalid
+        d0 = R{b1}.d
+      if ins.fp:
+        trace pc, op, "[" & $b0.Regs & "]" , d0
+        if R{b0}.d > cpu.codeLen: bof
+        cpu.read(d1, R{b0}.d)
+        d1 *= d0
+        cpu.write(d1, R{b0}.d)
+      else:
+        trace pc, op, b0.Regs, d0
+        R{b0} = R{b0}.d * d0
+    of DIV:
+      cpu.read(b0)
+      if b0 > Regs.high: invalid
+      d0 = R{R0}.d
+      d1 = R{b0}.d
+      R{R0} = (d0.int / d1.int).DWORD
+      R{R3} = d0 mod d1
     of INC:
       cpu.read(b0)
       trace pc, op, b0.Regs

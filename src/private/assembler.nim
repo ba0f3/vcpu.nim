@@ -81,7 +81,7 @@ proc tokenizer(s: string): seq[Token] =
       leave:
         if p.nt.name != "ig" and length > 0:
           let matchStr = s.substr(start, start+length-1)
-          #echo p.nt.name, " => ", matchStr
+          echo p.nt.name, " => ", matchStr
           case p.nt.name
           of "label":
             tokens.add(labelToken(matchStr[0..^2]))
@@ -96,7 +96,7 @@ proc tokenizer(s: string): seq[Token] =
               raise newException(ValueError, "invalid register")
           of "name":
             stack.add(nameToken(matchStr))
-          of "ptr":
+          of "addr":
             var token = stack.pop()
             token.isptr = true
             stack.add(token)

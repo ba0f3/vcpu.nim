@@ -3,8 +3,8 @@ label <- ident ':'
 code  <- ins (\n / \s+ arg (',' arg )* )?
 ins   <- \a+
 ident <- [a-zA-Z_][a-zA-Z_0-9\_]*
-arg   <- sp* (ptr / reg / name / imm / '"' str '"') sp*
-ptr   <- '[' sp* (reg / name) sp* ']'
+arg   <- sp* (addr / reg / name / imm / '"' str '"') sp*
+addr   <- '[' sp* (reg / name) sp* ']'
 reg   <- (('r' / 'w' / [hl]) [0-7] / 'sp' / 'bp') !\w
 name  <- ident
 str   <- ("\\" . / [^"])*
