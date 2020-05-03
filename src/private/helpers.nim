@@ -7,6 +7,31 @@ template HIBYTE*(w: WORD): WORD = (w shr 8).BYTE
 
 converter opcode2byte*(o: OpCode): BYTE = o.BYTE
 converter regs2byte*(r: Regs): BYTE = r.BYTE
+converter int2pointer*(x: int): pointer = cast[pointer](x)
+
+template `+`*[T](p: ptr T, off: SomeInteger): ptr T =
+  cast[ptr type(p[])](cast[int](p) +% off.int)
+
+template `+=`*[T](p: ptr T, off: SomeInteger) =
+  p = p + off
+
+template `-`*[T](p: ptr T, off: SomeInteger): ptr T =
+  cast[ptr type(p[])](cast[int](p) -% off.int)
+
+template `-=`*[T](p: ptr T, off: SomeInteger) =
+  p = p - off
+
+template `+`*(p: pointer, off: SomeInteger): pointer =
+  cast[pointer](cast[int](p) +% off.int)
+
+template `+=`*(p: pointer, off: SomeInteger) =
+  p = p + off
+
+template `-`*(p: pointer, off: SomeInteger): pointer =
+  cast[pointer](cast[int](p) -% off.int)
+
+template `-=`*(p: pointer, off: SomeInteger) =
+  p = p - off
 
 
 macro debug*(args: varargs[untyped]): untyped =
@@ -58,9 +83,7 @@ proc `{}=`*(r: ptr array[8, IMM], b: BYTE, d: DWORD) =
 
 
 proc hexdump*(data: cstring, length: int) =
-  var
-    ascii: array[17, char]
-    i, j: int
+  var ascii: array[17, char]
   ascii[16] = '\0'
   for i in 0..15:
     stdout.write toHex(i.BYTE).toLowerAscii()
@@ -80,7 +103,7 @@ proc hexdump*(data: cstring, length: int) =
       if (i+1) mod 16 <= 8:
         stdout.write " "
 
-      j = (i+1) mod 16
+      var j = (i+1) mod 16
       while j < 16:
         stdout.write "   "
         inc(j)

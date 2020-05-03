@@ -1,5 +1,5 @@
 import os, strutils, pegs, tables, strtabs, streams, parseUtils
-import common, helpers
+import common, helpers, functions
 
 # TODO: fix data size for operations
 
@@ -55,6 +55,10 @@ proc newAssembler*(): Assembler =
   result.placeholders = initTable[string, seq[Placeholder]]()
   result.inlineString = newStringTable(modeCaseInsensitive)
 
+  for name in exported_functions:
+    result.labels[name] = getFuncAddr(name)
+    echo name, " ", getFuncAddr(name)
+
 
 proc lookupIns(ins: string): OpCode =
   var ins = ins.toUpperAscii()
@@ -88,7 +92,7 @@ proc tokenizer(a: Assembler, s: string) =
       leave:
         if p.nt.name != "ig" and length > 0:
           let matchStr = s.substr(start, start+length-1)
-          #echo p.nt.name, " => ", matchStr
+          echo p.nt.name, " => ", matchStr
           case p.nt.name
           of "inc":
             var t = stack.pop()
@@ -153,6 +157,9 @@ proc writeArg(a: Assembler, t: Token, prev = Token(kind: NONE)) =
     var size = 2
     if prev.kind == REG:
       size = size(prev.r)
+    elif prev.kind == INS and prev.o == CALL:
+      # call external function
+      size = sizeof(int)
     var ph = Placeholder(size: size, pos: a.code.getPosition)
     if not a.placeholders.hasKey(t.n):
       a.placeholders[t.n] = @[ph]
@@ -163,8 +170,10 @@ proc writeArg(a: Assembler, t: Token, prev = Token(kind: NONE)) =
       a.code.write(0.BYTE)
     of 2:
       a.code.write(0.WORD)
-    else:
+    of 4:
       a.code.write(0.DWORD)
+    else:
+      a.code.write(0.int)
   of STR:
     var size = 2
     if prev.kind == REG:
@@ -200,9 +209,9 @@ proc parseData(a: Assembler, op: OpCode) =
       break
     next  = a.tokens[a.pos + 1]
 
-proc parseIns(a: Assembler, op: OpCode) =
+proc parseIns(a: Assembler, t: Token) =
   let
-    options = OpOptions[op]
+    options = OpOptions[t.o]
     nargs = HIBYTE(options).int8
     kind = LOBYTE(options).int8
 
@@ -210,7 +219,7 @@ proc parseIns(a: Assembler, op: OpCode) =
     raise newException(ValueError, "not enough token")
 
   var
-    ins = Instruction(op: op)
+    ins = Instruction(op: t.o)
     a1, a2: Token
   if nargs == 0:
     a.code.write(ins)
@@ -221,7 +230,7 @@ proc parseIns(a: Assembler, op: OpCode) =
     if a1.isptr:
       ins.fp = true
     a.code.write(ins)
-    a.writeArg(a1)
+    a.writeArg(a1, t)
   else:
     assert kind != 0
     a1 = a.tokens[a.pos + 1]
@@ -235,7 +244,7 @@ proc parseIns(a: Assembler, op: OpCode) =
     if ins.fp and ins.lp:
       raise newException(ValueError, "invalid combination of opcode and operands")
     a.code.write(ins)
-    a.writeArg(a1)
+    a.writeArg(a1, t)
     a.writeArg(a2, a1)
   inc(a.pos, nargs)
 
@@ -253,7 +262,7 @@ proc compileString*(a: Assembler, input: string): TaintedString =
       if token.o in [DB, DW, DD]:
         a.parseData(token.o)
       else:
-        a.parseIns(token.o)
+        a.parseIns(token)
       inc(a.pos)
     else:
       raise newException(ValueError, "it should never go here")
@@ -282,8 +291,10 @@ proc compileString*(a: Assembler, input: string): TaintedString =
         a.code.write(pos.BYTE)
       of 2:
         a.code.write(pos.WORD)
-      else:
+      of 4:
         a.code.write(pos.DWORD)
+      else:
+        a.code.write(pos)
   a.code.setPosition(0)
   result = a.code.readAll()
 

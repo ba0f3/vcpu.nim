@@ -1,4 +1,4 @@
-import tables, macros
+import tables, macros, locks
 
 macro opcodes*(body: untyped): untyped =
   result = newStmtList()
@@ -99,22 +99,64 @@ opcodes:
   CMP   2, 2
   PUSH  1, 2
   POP   1, 1
-  #PRNT  0, 0
   PRNTX 0, 0
   PRNTS 0, 0
   DUMP  0, 0 # 0x1B
   ASSRT 2, 2
-  HALT  0, 0 # 0x1D
+  HALT  0, 0, 0x1F
 
   # special op, resv, data size
   DB    0, 1
   DW    0, 2
   DD    0, 4
 
+const
+  VCPU_DATA_SIZE* {.intdefine.} = 10240
+  VCPU_STACK_SIZE* {.intdefine.} = 128
+
 type
+
+  REGISTERS* = object
+    R*: array[8, IMM]
+    ZF* {.bitsize:1.}: uint8
+    CF* {.bitsize:1.}: uint8
+    PC*, SP*, BP*: DWORD
+
+  VCPU* = ref object of RootObj
+    code*: array[VCPU_DATA_SIZE, BYTE]
+    codeLen*: DWORD
+    stack*: array[VCPU_STACK_SIZE, DWORD]
+    regs*: REGISTERS
+    lock*: Lock
+
+  BufferOverflowException* = object of OSError
+  StackOverflowException* = object of OSError
+  StackUnderflowException* = object of OSError
+
   Instruction* = object
     op* {.bitsize: 5.}: OpCode
     im* {.bitsize: 1.}: bool # register or immediate
     fp* {.bitsize: 1.}: bool # first arg is pointer
     lp* {.bitsize: 1.}: bool # second arg is pointer
 
+proc setReg*(cpu: VCPU, reg: Regs, value: DWORD) {.inline.} = cpu.regs.R[reg.ord mod 8].d = value
+proc setReg*(cpu: VCPU, r1: Regs, r2: Regs) {.inline.} = cpu.setReg(r1, cpu.regs.R[r2.ord mod 8].d)
+proc getReg*(cpu: VCPU, reg: Regs): DWORD {.inline.} = cpu.regs.R[reg.ord mod 8].d
+
+proc getZF*(cpu: VCPU): uint8 {.inline.} = cpu.regs.ZF
+proc getCF*(cpu: VCPU): uint8 {.inline.} = cpu.regs.CF
+
+proc err*(t: typedesc, msg: string) {.inline.} = raise newException(t, msg)
+
+proc push*(cpu: VCPU, value: DWORD) =
+  dec(cpu.regs.SP)
+  if cpu.regs.SP == 0xffffffff.DWORD:
+    err(StackOverflowException, "stack overflow")
+  cpu.stack[cpu.regs.SP] = value
+
+proc pop*(cpu: VCPU): DWORD {.inline.} =
+  if cpu.stack[cpu.regs.SP] == VCPU_STACK_SIZE:
+    err(StackUnderflowException, "stack underflow")
+  result = cpu.stack[cpu.regs.SP]
+  cpu.stack[cpu.regs.SP] = 0
+  inc(cpu.regs.SP)

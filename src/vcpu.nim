@@ -1,30 +1,7 @@
 import streams, macros, strutils, locks
 
-import private/[common, helpers]
+import private/[common, helpers, functions]
 export common
-
-const
-  VCPU_DATA_SIZE {.intdefine.} = 10240
-  VCPU_STACK_SIZE {.intdefine.} = 128
-
-type
-
-  REGISTERS = object
-    R: array[8, IMM]
-    ZF {.bitsize:1.}: uint8
-    CF {.bitsize:1.}: uint8
-    PC, SP, BP: DWORD
-
-  VCPU* = ref object of RootObj
-    code: array[VCPU_DATA_SIZE, BYTE]
-    codeLen: DWORD
-    stack: array[VCPU_STACK_SIZE, DWORD]
-    regs: REGISTERS
-    lock: Lock
-
-  BufferOverflowException* = object of OSError
-  StackOverflowException* = object of OSError
-  StackUnderflowException* = object of OSError
 
 proc err(t: typedesc, msg: string) {.inline.} = raise newException(t, msg)
 
@@ -66,12 +43,6 @@ proc write*[T](cpu: VCPU, input: T, pos: WORD|DWORD) =
   if tmpLen > cpu.codeLen.int:
     cpu.codeLen = tmpLen.DWORD
 
-proc setReg*(cpu: VCPU, reg: Regs, value: DWORD) {.inline.} = cpu.regs.R[reg.ord mod 8].d = value
-proc setReg*(cpu: VCPU, r1: Regs, r2: Regs) {.inline.} = cpu.setReg(r1, cpu.regs.R[r2.ord mod 8].d)
-proc getReg*(cpu: VCPU, reg: Regs): DWORD {.inline.} = cpu.regs.R[reg.ord mod 8].d
-
-proc getZF*(cpu: VCPU): uint8 {.inline.} = cpu.regs.ZF
-proc getCF*(cpu: VCPU): uint8 {.inline.} = cpu.regs.CF
 
 
 proc reset*(cpu: VCPU) =
@@ -123,18 +94,7 @@ proc addInput*[T: BYTE|WORD|DWORD|string](cpu: VCPU, input: T): DWORD {.inline.}
   else:
     cpu.addCode(input.unsafeAddr, sizeof(T).DWORD)
 
-proc push*(cpu: VCPU, value: DWORD) =
-  dec(cpu.regs.SP)
-  if cpu.regs.SP == 0xffffffff.DWORD:
-    err(StackOverflowException, "stack overflow")
-  cpu.stack[cpu.regs.SP] = value
 
-proc pop(cpu: VCPU): DWORD {.inline.} =
-  if cpu.stack[cpu.regs.SP] == VCPU_STACK_SIZE:
-    err(StackUnderflowException, "stack underflow")
-  result = cpu.stack[cpu.regs.SP]
-  cpu.stack[cpu.regs.SP] = 0
-  inc(cpu.regs.SP)
 
 proc dump*(cpu: VCPU): DWORD =
   # dump loaded code to asm
@@ -160,10 +120,31 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
     of NOP:
       trace pc, op
     of CALL:
-      cpu.read(w0)
-      trace pc, op, toHex(w0), "\t; ☎️"
-      cpu.push(cpu.regs.PC)
-      cpu.regs.PC = w0
+      if ins.fp: # address is a pointer to external function
+        when sizeof(int) != sizeof(int32):
+          var add: int
+          cpu.read(add)
+          when not defined(release):
+            var fname: string
+            for f in exported_functions:
+              if getFuncAddr(f) == add:
+                fname = f
+          trace pc, op, "[" & fname & "]", "\t; ☎️"
+          getFunc(add)(cpu)
+        else:
+          cpu.read(d0)
+          when not defined(release):
+            var fname: string
+            for f in exported_functions:
+              if getFuncAddr(f) == add:
+                fname = f
+          trace pc, op, "[" & fname & "]", "\t; ☎️"
+          getFunc(d0)(cpu)
+      else:
+        cpu.read(w0)
+        trace pc, op, toHex(w0), "\t; ☎️"
+        cpu.push(cpu.regs.PC)
+        cpu.regs.PC = w0
     of RET:
       cpu.regs.PC = cpu.pop()
       trace pc, op, "\t: 🔙"
