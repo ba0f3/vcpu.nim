@@ -24,8 +24,11 @@ proc nim_echo*(cpu: VCPU) =
 
   echo $cast[cstring](code + mem)
 
-proc open*(cpu: VCPU) =
-  discard
+proc add*(cpu: VCPU) =
+  let
+    a = cpu.pop()
+    b = cpu.pop()
+  cpu.push(a + b)
 
 register("echo", nim_echo)
-register("open", open)
+register("add", add)
