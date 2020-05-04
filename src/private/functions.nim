@@ -4,6 +4,8 @@ import common, helpers
 type Function* = proc(cpu: VCPU) {.nimcall.}
 
 var functions_map = initTable[Hash, Function]()
+when not defined(release):
+  var functions_name* = initTable[int, string]()
 
 proc getFuncAddr*(name: string): int = hash(name)
 proc getFunc*(h: Hash): Function =
@@ -17,6 +19,8 @@ proc register*(name: string, f: Function) =
     raise newException(ValueError, "function " & name & " is already registered")
 
   functions_map[add] = f
+  when not defined(release):
+    functions_name[add.int] = name
 
 proc nim_echo*(cpu: VCPU) =
   let

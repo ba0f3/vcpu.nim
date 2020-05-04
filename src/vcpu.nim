@@ -1,4 +1,4 @@
-import streams, macros, strutils, locks
+import streams, macros, strutils, locks, tables
 
 import private/[common, helpers, functions]
 export common, functions
@@ -99,6 +99,7 @@ proc dump*(cpu: VCPU): DWORD =
   discard
 
 proc run*(cpu: VCPU): DWORD {.discardable.} =
+  ## Execute loaded instructions, return R0's value when finish
   var
     ins: Instruction
     op: OpCode
@@ -121,12 +122,7 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       if ins.fp: # address is a pointer to external function
         var add: int
         cpu.read(add)
-        when not defined(release):
-          var fname: string
-          for f in exported_functions:
-            if getFuncAddr(f) == add:
-              fname = f
-        trace pc, op, "[" & fname & "]", "\t; ☎️"
+        trace pc, op, "[" & functions_name[add] & "]", "\t; ☎️"
         getFunc(add)(cpu)
       else:
         cpu.read(w0)
