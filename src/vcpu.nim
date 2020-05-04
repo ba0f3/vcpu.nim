@@ -1,9 +1,7 @@
 import streams, macros, strutils, locks
 
 import private/[common, helpers, functions]
-export common
-
-proc err(t: typedesc, msg: string) {.inline.} = raise newException(t, msg)
+export common, functions
 
 template invalid() = err(IOError, "invalid register")
 template bof() = err(BufferOverflowException, "buffer overflow")
@@ -121,25 +119,15 @@ proc run*(cpu: VCPU): DWORD {.discardable.} =
       trace pc, op
     of CALL:
       if ins.fp: # address is a pointer to external function
-        when sizeof(int) != sizeof(int32):
-          var add: int
-          cpu.read(add)
-          when not defined(release):
-            var fname: string
-            for f in exported_functions:
-              if getFuncAddr(f) == add:
-                fname = f
-          trace pc, op, "[" & fname & "]", "\t; ☎️"
-          getFunc(add)(cpu)
-        else:
-          cpu.read(d0)
-          when not defined(release):
-            var fname: string
-            for f in exported_functions:
-              if getFuncAddr(f) == add:
-                fname = f
-          trace pc, op, "[" & fname & "]", "\t; ☎️"
-          getFunc(d0)(cpu)
+        var add: int
+        cpu.read(add)
+        when not defined(release):
+          var fname: string
+          for f in exported_functions:
+            if getFuncAddr(f) == add:
+              fname = f
+        trace pc, op, "[" & fname & "]", "\t; ☎️"
+        getFunc(add)(cpu)
       else:
         cpu.read(w0)
         trace pc, op, toHex(w0), "\t; ☎️"
