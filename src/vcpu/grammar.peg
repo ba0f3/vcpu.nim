@@ -1,0 +1,14 @@
+ASM   <- ( ( \n / inc / label  / code)* ig )*
+inc   <- '#include' \s+  '"' str '"'
+label <- ident ':'
+code  <- ins (\n / \s+ arg (',' arg )* )?
+ins   <- \a+
+ident <- [a-zA-Z_][a-zA-Z_0-9\_]*
+arg   <- sp* (addr / reg / name / imm / '"' str '"') sp*
+addr   <- '[' sp* (reg / name) sp* ']'
+reg   <- (('r' / 'w' / [hl]) [0-7] / 'sp' / 'bp') !\w
+name  <- ident
+str   <- ("\\" . / [^"])*
+imm   <- '0x' [0-9a-fA-F]+ / [0-9a-fA-F]+ 'h' !\w / \d+
+ig    <- (\s / ';' @ \n)*
+sp    <- ' '
