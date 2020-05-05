@@ -88,7 +88,7 @@ proc hexdump*(data: cstring, length: int) =
   for i in 0..15:
     stdout.write toHex(i.BYTE).toLowerAscii()
     stdout.write " "
-  stdout.write "\n"
+  stdout.write "| 0123456789abcdef\n" & "-".repeat(66) & "\n"
   for i in 0..<length:
     stdout.write toHex(data[i].BYTE)
     stdout.write " "
@@ -97,11 +97,11 @@ proc hexdump*(data: cstring, length: int) =
     else:
       ascii[i mod 16] = '.'
     if (i+1) mod 16 == 0:
-      echo " | ", cast[cstring](addr ascii)
+      echo "| ", cast[cstring](addr ascii)
     elif (i+1) == length:
       ascii[(i+1) mod 16] = '\0'
-      if (i+1) mod 16 <= 8:
-        stdout.write " "
+      #if (i+1) mod 16 <= 8:
+      #  stdout.write ""
 
       var j = (i+1) mod 16
       while j < 16:

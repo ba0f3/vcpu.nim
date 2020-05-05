@@ -17,7 +17,7 @@ proc fun(paths: seq[string], r0="", r1="", r2="", r3="", r4="", r5="", r6="", r7
   for path in paths:
     cpu.reset()
     var a = newAssembler()
-    let data = a.compileString(readFile(path))
+    let data = a.compileString(readFile(path), path)
     if not cpu.loadCode(data.cstring, data.len):
       return 1
     cpu.setReg(R0, cpu.parseInput(r0))

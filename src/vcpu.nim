@@ -41,8 +41,6 @@ proc write*[T](cpu: VCPU, input: T, pos: WORD|DWORD) =
   if tmpLen > cpu.codeLen.int:
     cpu.codeLen = tmpLen.DWORD
 
-
-
 proc reset*(cpu: VCPU) =
   zeroMem(addr cpu.regs, sizeof(REGISTERS))
   zeroMem(addr cpu.code, VCPU_DATA_SIZE)
