@@ -111,8 +111,8 @@ opcodes:
   DD    0, 4
 
 const
-  VCPU_DATA_SIZE* {.intdefine.} = 10240
-  VCPU_STACK_SIZE* {.intdefine.} = 128
+  VCPU_DATA_SIZE* {.intdefine.} = 2048
+  VCPU_STACK_SIZE* {.intdefine.} = 32
 
 type
 

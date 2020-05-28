@@ -495,6 +495,6 @@ proc jmp*(cpu: VCPU, `addr`: DWORD): bool {.discardable.} =
     result = true
   cpu.lock.release()
 
-proc call*(cpu: VCPU, `addr`: DWORD): DWORD =
+proc call*(cpu: VCPU, `addr`: DWORD): DWORD {.discardable.} =
   if cpu.jmp(`addr`):
     result = cpu.run()
